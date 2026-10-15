@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b1c32">
+  <title>TCL Enterprise | Telecom Operations Portal</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="script.js" defer></script>
+</head>
+<body>
+  <section class="login-screen" id="login-screen" aria-labelledby="login-heading">
+    <div class="login-art" aria-hidden="true">
+      <div class="art-grid"></div>
+      <div class="signal-orbit orbit-one"></div>
+      <div class="signal-orbit orbit-two"></div>
+      <div class="login-art-copy">
+        <span class="eyebrow">CONNECTED, BY DESIGN</span>
+        <h1>Every connection<br>moves us forward.</h1>
+        <p>One place to see the service, the signal, and the people behind it.</p>
+      </div>
+    </div>
+    <div class="login-panel">
+      <a class="brand login-brand" href="#login" aria-label="TCL Enterprise home">
+        <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M8 28a16 16 0 0 1 32 0M14 28a10 10 0 0 1 20 0M20 28a4 4 0 0 1 8 0"/><circle cx="24" cy="35" r="2.7"/><path d="M9 38h30"/></svg></span>
+        <span><strong>TCL <b>Enterprise</b></strong><small>TELECOMMUNICATION COMPANY LIMITED</small></span>
+      </a>
+      <div class="login-form-wrap">
+        <span class="eyebrow">EMPLOYEE ACCESS</span>
+        <h2 id="login-heading">Welcome back</h2>
+        <p class="muted">Sign in to your enterprise workspace.</p>
+        <form id="login-form" novalidate>
+          <label for="username">Username</label>
+          <div class="input-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></svg><input id="username" name="username" type="text" autocomplete="username" placeholder="Username" required></div>
+          <label for="password">Password</label>
+          <div class="input-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><input id="password" name="password" type="password" autocomplete="current-password" placeholder="Enter your password" required><button class="password-toggle" id="password-toggle" type="button" aria-label="Show password">Show</button></div>
+          <div class="login-options"><label class="check-label"><input id="remember-me" type="checkbox"><span>Remember me</span></label></div>
+          <p class="form-error" id="login-error" role="alert"></p>
+          <button class="button button-primary login-submit" type="submit">Sign in <span aria-hidden="true">→</span></button>
+        </form>
+        <div class="demo-credentials"><span class="credential-label">DEMO CREDENTIALS</span><p><span>Username</span><code>demo.employee</code></p><p><span>Password</span><code>Demo@123</code></p></div>
+      </div>
+      <p class="login-footer">Design and Developed By Digitalization Team</p>
+    </div>
+  </section>
+
+  <div class="app-shell is-hidden" id="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <a class="brand sidebar-brand" href="#overview" aria-label="TCL Enterprise overview">
+        <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M8 28a16 16 0 0 1 32 0M14 28a10 10 0 0 1 20 0M20 28a4 4 0 0 1 8 0"/><circle cx="24" cy="35" r="2.7"/><path d="M9 38h30"/></svg></span>
+        <span><strong>TCL <b>Enterprise</b></strong><small>TELECOM OPERATIONS</small></span>
+      </a>
+      <div class="workspace-label">WORKSPACE <span>DEMO</span></div>
+      <nav class="side-nav" aria-label="Main navigation">
+        <button class="nav-link active" data-section="overview"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="11" width="7" height="10" rx="1.5"/><rect x="3" y="14" width="8" height="7" rx="1.5"/></svg>Overview</button>
+        <button class="nav-link" data-section="customers"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2M9.5 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM20 8v6M23 11h-6"/></svg>Customers<span class="nav-count" id="customer-nav-count">09</span></button>
+        <button class="nav-link" data-section="network"><svg viewBox="0 0 24 24"><path d="M5 9a11 11 0 0 1 14 0M8 12a6.5 6.5 0 0 1 8 0m-5 4a2.5 2.5 0 0 1 2 0M12 20h.01"/></svg>Network &amp; Wi-Fi</button>
+        <button class="nav-link" data-section="tickets"><svg viewBox="0 0 24 24"><path d="M4 5h16v4a3 3 0 0 0 0 6v4H4v-4a3 3 0 0 0 0-6V5Z"/><path d="M13 8v2m0 4v2"/></svg>Complaints &amp; requests<span class="nav-count" id="ticket-nav-count">04</span></button>
+        <button class="nav-link" data-section="billing"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M7 15h4"/></svg>Billing</button>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="side-help"><span class="help-icon">?</span><div><strong>Need a hand?</strong><small>Contact your service desk</small></div><button type="button" aria-label="Contact service desk" id="help-button">↗</button></div>
+        <button class="nav-link" data-section="profile"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>My profile</button>
+        <div class="sidebar-caption">Design and Developed By<br><strong>Digitalization Team</strong></div>
+      </div>
+    </aside>
+    <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+
+    <main class="main-area">
+      <header class="topbar">
+        <button class="icon-button mobile-menu" id="mobile-menu" type="button" aria-label="Open navigation"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+        <div class="breadcrumb"><span>Workspace</span><span class="crumb-sep">/</span><strong id="current-page-title">Overview</strong></div>
+        <div class="topbar-actions">
+          <label class="global-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input id="global-search" type="search" placeholder="Search customers, tickets..." aria-label="Global search"><kbd>Enter</kbd></label>
+          <button class="icon-button notification-button" id="notifications-button" type="button" aria-label="Notifications"><svg viewBox="0 0 24 24"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg><span class="notification-dot"></span></button>
+          <button class="profile-trigger" id="profile-menu-button" type="button" aria-expanded="false"><span class="avatar avatar-small">AS</span><span class="profile-trigger-copy"><strong id="topbar-employee-name">Amina Shah</strong><small>Operations manager</small></span><span class="chevron">⌄</span></button>
+          <div class="profile-menu is-hidden" id="profile-menu"><button type="button" data-go-profile>View profile</button><button type="button" id="logout-button">Sign out</button></div>
+        </div>
+      </header>
+      <div class="content-area">
+        <section class="view-section active" id="section-overview" data-title="Overview">
+          <div class="page-heading"><div><span class="eyebrow">TUESDAY, OCTOBER 13, 2026</span><h1>Good morning, <span id="welcome-name">Amina</span></h1><p>Here is what is happening across your service portfolio today.</p></div><button class="button button-outline" id="overview-export"><svg viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M5 17v4h14v-4"/></svg>Export customer data</button></div>
+          <div class="overview-layout">
+            <div class="overview-main">
+              <div class="metric-grid">
+                <article class="metric-card"><div class="metric-head"><span>Total customers</span><span class="metric-icon blue"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2M9.5 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM20 8v6m3-3h-6"/></svg></span></div><strong class="metric-value" id="metric-customers">2,486</strong><div class="metric-foot"><span class="trend-up">↑ 4.8%</span><span>vs. last month</span></div></article>
+                <article class="metric-card"><div class="metric-head"><span>Active connections</span><span class="metric-icon teal"><svg viewBox="0 0 24 24"><path d="M5 9a11 11 0 0 1 14 0m-11 3a6.5 6.5 0 0 1 8 0m-5 4a2.5 2.5 0 0 1 2 0M12 20h.01"/></svg></span></div><strong class="metric-value">2,311</strong><div class="metric-foot"><span class="status-indicator"><i></i> 92.9%</span><span>of all customers</span></div></article>
+                <article class="metric-card"><div class="metric-head"><span>Open tickets</span><span class="metric-icon amber"><svg viewBox="0 0 24 24"><path d="M12 9v4m0 4h.01M10.3 3.9 2.7 17a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg></span></div><strong class="metric-value" id="metric-open-tickets">0</strong><div class="metric-foot"><span>Across all categories</span></div></article>
+                <article class="metric-card"><div class="metric-head"><span>Pending requests</span><span class="metric-icon violet"><svg viewBox="0 0 24 24"><path d="M8 2v4m8-4v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2Z"/></svg></span></div><strong class="metric-value">07</strong><div class="metric-foot"><span>Across <b>3 teams</b></span></div></article>
+                <article class="metric-card"><div class="metric-head"><span>Network health</span><span class="metric-icon green"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11Z"/><path d="m9 12 2 2 4-4"/></svg></span></div><strong class="metric-value">98.6<span class="value-unit">%</span></strong><div class="metric-foot"><span class="status-indicator"><i></i> Healthy</span><span>All regions</span></div></article>
+                <article class="metric-card"><div class="metric-head"><span>Average Wi-Fi signal</span><span class="metric-icon cyan"><svg viewBox="0 0 24 24"><path d="M5 9a11 11 0 0 1 14 0m-11 3a6.5 6.5 0 0 1 8 0m-5 4a2.5 2.5 0 0 1 2 0M12 20h.01"/></svg></span></div><strong class="metric-value">-54<span class="value-unit"> dBm</span></strong><div class="metric-foot"><span class="signal-bars"><i></i><i></i><i></i><i></i></span><span>Very good</span></div></article>
+              </div>
+              <div class="panel customer-panel"><div class="panel-heading"><div><h2>Customer snapshot</h2><p>Latest activity across your portfolio</p></div><button class="text-button" data-go-section="customers">View all customers <span>→</span></button></div><div class="table-wrap"><table><thead><tr><th>Customer</th><th>Service</th><th>Connection</th><th>Monthly bill</th><th>Signal</th></tr></thead><tbody id="overview-customer-rows"></tbody></table></div></div>
+            </div>
+            <aside class="overview-rail">
+              <article class="network-summary"><div class="network-summary-top"><span class="network-pulse"><i></i></span><span>NETWORK STATUS</span><button class="plain-icon" id="overview-network-refresh" aria-label="Refresh network status">↻</button></div><h2>All systems<br><span>operational</span></h2><p>Core services are reporting normally across all monitored regions.</p><div class="network-summary-stats"><div><strong>98.6%</strong><small>Network health</small></div><div><strong>34 ms</strong><small>Average latency</small></div></div><button class="network-link" data-go-section="network">Open network monitor <span>→</span></button></article>
+              <article class="panel ticket-panel"><div class="panel-heading"><div><h2>Needs attention</h2><p>Priority items for your team</p></div><span class="attention-count">3</span></div><div class="attention-list"><button class="attention-item" data-ticket-id="TCL-2407"><span class="attention-icon red">!</span><span><strong>Intermittent connection</strong><small>Ticket TCL-2407 · High priority</small></span><span class="attention-arrow">↗</span></button><button class="attention-item" data-ticket-id="TCL-2411"><span class="attention-icon amber">⌁</span><span><strong>Installation follow-up</strong><small>Ticket TCL-2411 · Medium</small></span><span class="attention-arrow">↗</span></button><button class="attention-item" data-ticket-id="TCL-2413"><span class="attention-icon blue">＋</span><span><strong>Upgrade request</strong><small>Ticket TCL-2413 · Normal</small></span><span class="attention-arrow">↗</span></button></div><button class="text-button ticket-view-all" data-go-section="tickets">View all tickets <span>→</span></button></article>
+              <div class="quote-note"><span class="quote-mark">“</span><p>Reliable connections start with a clear view of every customer.</p><span>OPERATIONS PRINCIPLE 01</span></div>
+            </aside>
+          </div>
+        </section>
+
+        <section class="view-section" id="section-customers" data-title="Customers">
+          <div class="page-heading"><div><span class="eyebrow">CUSTOMER OPERATIONS</span><h1>Customers</h1><p>Manage service records across your portfolio.</p></div><button class="button button-primary" id="customer-export"><svg viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M5 17v4h14v-4"/></svg>Export CSV</button></div>
+          <div class="panel data-panel"><div class="table-toolbar"><div class="toolbar-search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input id="customer-search" type="search" placeholder="Search name or customer ID"></div><div class="toolbar-filters"><label class="select-label"><span>Status</span><select id="customer-status-filter"><option value="">All statuses</option><option>Active</option><option>Suspended</option><option>Pending</option></select></label><label class="select-label"><span>Service</span><select id="customer-service-filter"><option value="">All services</option><option>Fiber</option><option>Broadband</option><option>Landline</option><option>Bundle</option></select></label></div><span class="record-count" id="customer-record-count"></span></div><div class="table-wrap"><table class="customer-table"><thead><tr><th><button data-sort="id">Customer ID <span>↕</span></button></th><th><button data-sort="name">Customer <span>↕</span></button></th><th><button data-sort="service">Service <span>↕</span></button></th><th>Registered contact</th><th><button data-sort="status">Connection <span>↕</span></button></th><th>Package</th><th><button data-sort="bill">Monthly bill <span>↕</span></button></th><th>Remaining dues</th><th>Signal</th><th>Complaint</th><th>Actions</th></tr></thead><tbody id="customer-rows"></tbody></table><div class="empty-state is-hidden" id="customer-empty">No customers match these filters.</div></div><div class="table-foot"><span id="customer-table-summary"></span></div></div>
+        </section>
+
+        <section class="view-section" id="section-network" data-title="Network & Wi-Fi">
+          <div class="page-heading"><div><span class="eyebrow">CONNECTIVITY MONITOR <span class="simulated-tag">SIMULATION</span></span><h1>Network &amp; Wi-Fi</h1><p>Review demo connection health and run simulated diagnostics.</p></div><button class="button button-outline" id="refresh-network"><svg viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.6 9A7 7 0 0 1 18 6l2 6M4 12l2 6a7 7 0 0 0 12.4-3"/></svg>Refresh status</button></div>
+          <div class="network-status-banner"><div class="status-banner-icon"><svg viewBox="0 0 24 24"><path d="M5 9a11 11 0 0 1 14 0m-11 3a6.5 6.5 0 0 1 8 0m-5 4a2.5 2.5 0 0 1 2 0M12 20h.01"/></svg></div><div><span class="eyebrow">CURRENT CONNECTION</span><h2><i></i> Stable connection <span class="status-small">· Monitoring normally</span></h2><p>Service profile: TCL Fiber Home 100 · Router ID: DEMO-RTR-0084</p></div><span class="simulated-tag">SIMULATED</span></div>
+          <div class="network-layout"><div class="network-metrics-grid">
+            <article class="network-metric signal-card"><div class="network-metric-label">Wi-Fi signal strength <span>ⓘ</span></div><div class="signal-reading"><strong id="signal-db">-54</strong><span>dBm</span><div class="signal-bars large" id="network-signal-bars"><i></i><i></i><i></i><i></i><i></i></div></div><div class="progress-track"><i id="signal-progress" style="width:82%"></i></div><div class="metric-description"><span id="signal-quality-label">Very good signal</span><strong id="signal-quality">82%</strong></div></article>
+            <article class="network-metric"><div class="network-metric-label">Download speed <span>↓</span></div><div class="network-reading"><strong id="download-speed">86.4</strong><span>Mbps</span></div><div class="mini-chart download-chart"><i style="height:25%"></i><i style="height:38%"></i><i style="height:31%"></i><i style="height:55%"></i><i style="height:46%"></i><i style="height:68%"></i><i style="height:58%"></i><i style="height:82%"></i><i style="height:71%"></i><i style="height:100%"></i></div><small>Last 10 readings · simulated</small></article>
+            <article class="network-metric"><div class="network-metric-label">Upload speed <span>↑</span></div><div class="network-reading"><strong id="upload-speed">24.8</strong><span>Mbps</span></div><div class="mini-chart upload-chart"><i style="height:20%"></i><i style="height:44%"></i><i style="height:33%"></i><i style="height:63%"></i><i style="height:52%"></i><i style="height:76%"></i><i style="height:49%"></i><i style="height:91%"></i><i style="height:72%"></i><i style="height:100%"></i></div><small>Last 10 readings · simulated</small></article>
+            <article class="network-metric"><div class="network-metric-label">Latency <span>◷</span></div><div class="network-reading"><strong id="latency">34</strong><span>ms</span></div><div class="metric-inline-status"><i></i> Excellent response time</div></article>
+            <article class="network-metric"><div class="network-metric-label">Packet loss <span>⌁</span></div><div class="network-reading"><strong id="packet-loss">0.2</strong><span>%</span></div><div class="metric-inline-status"><i></i> Within normal range</div></article>
+            <article class="network-metric"><div class="network-metric-label">Connected devices <span>⌘</span></div><div class="network-reading"><strong id="connected-devices">8</strong><span>devices</span></div><div class="device-chips"><span>Mobile 3</span><span>Computer 2</span><span>Other 3</span></div></article>
+            <article class="network-metric"><div class="network-metric-label">Connection uptime <span>◴</span></div><div class="network-reading"><strong id="uptime">12</strong><span>days</span></div><div class="metric-inline-status">Since Oct 01, 2026</div></article>
+            <article class="network-metric"><div class="network-metric-label">Network status <span>◉</span></div><div class="network-reading status-reading"><strong><i></i>Healthy</strong></div><div class="metric-inline-status">All demo checks passing</div></article>
+          </div><aside class="optimization-panel"><span class="eyebrow">SMART DIAGNOSTICS</span><h2>Make the most<br>of your signal.</h2><p>Run a local simulation to refresh readings and surface practical Wi-Fi suggestions.</p><button class="button button-primary" id="optimize-wifi"><svg viewBox="0 0 24 24"><path d="m12 3 1.9 5.8L20 11l-6.1 2.2L12 19l-1.9-5.8L4 11l6.1-2.2L12 3Z"/><path d="m19 14 .9 2.1L22 17l-2.1.9L19 20l-.9-2.1L16 17l2.1-.9L19 14Z"/></svg>Optimize Wi-Fi</button><button class="button button-light" id="run-speed-test"><svg viewBox="0 0 24 24"><path d="M4 18a8 8 0 1 1 16 0M12 14l4-4M7 18h.01M17 18h.01"/></svg>Run simulated speed test</button><button class="button button-light" id="refresh-signal"><svg viewBox="0 0 24 24"><path d="M5 9a11 11 0 0 1 14 0m-11 3a6.5 6.5 0 0 1 8 0m-5 4a2.5 2.5 0 0 1 2 0M12 20h.01"/></svg>Refresh signal strength</button><button class="text-button connection-details" id="connection-details">View connection details <span>→</span></button></aside></div>
+          <div class="panel suggestions-panel"><div class="panel-heading"><div><h2>Signal improvement ideas</h2><p>General guidance only. No router settings are changed by this demo.</p></div><span class="suggestions-count" id="suggestions-count">5 tips</span></div><div class="suggestion-grid" id="suggestion-list"></div></div>
+        </section>
+
+        <section class="view-section" id="section-tickets" data-title="Complaints & requests">
+          <div class="page-heading"><div><span class="eyebrow">SERVICE DESK <span class="simulated-tag">SIMULATED TICKETS</span></span><h1>Complaints &amp; requests</h1><p>Track service issues and customer requests through the demo queue.</p></div><button class="button button-primary" id="create-ticket"><span class="button-plus">+</span> Create demo ticket</button></div>
+          <div class="ticket-summary-grid"><div><span>Open</span><strong id="ticket-open-count">0</strong><i class="ticket-dot open-dot"></i></div><div><span>In progress</span><strong id="ticket-progress-count">0</strong><i class="ticket-dot progress-dot"></i></div><div><span>Resolved</span><strong id="ticket-resolved-count">0</strong><i class="ticket-dot resolved-dot"></i></div><div><span>All tickets</span><strong id="ticket-total-count">0</strong><i class="ticket-dot total-dot"></i></div></div>
+          <div class="panel data-panel"><div class="table-toolbar"><div class="toolbar-search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input id="ticket-search" type="search" placeholder="Search ticket or customer ID"></div><div class="toolbar-filters"><label class="select-label"><span>Status</span><select id="ticket-status-filter"><option value="">All statuses</option><option>Open</option><option>In Progress</option><option>Resolved</option></select></label><label class="select-label"><span>Category</span><select id="ticket-category-filter"><option value="">All categories</option><option>Internet connectivity</option><option>Landline fault</option><option>New connection</option><option>Package upgrade</option><option>Installation</option><option>Disconnection</option></select></label></div><span class="record-count" id="ticket-record-count"></span></div><div class="table-wrap"><table><thead><tr><th>Ticket ID</th><th>Customer ID</th><th>Issue category</th><th>Priority</th><th>Created</th><th>Assigned team</th><th>Status</th><th>Action</th></tr></thead><tbody id="ticket-rows"></tbody></table><div class="empty-state is-hidden" id="ticket-empty">No tickets match these filters.</div></div><div class="table-foot"><span>Fictional service desk records for demonstration.</span><span id="ticket-table-summary"></span></div></div>
+        </section>
+
+        <section class="view-section" id="section-billing" data-title="Billing">
+          <div class="page-heading"><div><span class="eyebrow">ACCOUNT SERVICES <span class="simulated-tag">SIMULATED BILLING</span></span><h1>Billing overview</h1><p>Review demo account balances and billing history. No payments are processed here.</p></div><div class="billing-total"><span>Portfolio outstanding</span><strong id="portfolio-outstanding">PKR 0</strong></div></div>
+          <div class="billing-summary-grid"><article><span class="metric-icon blue"><svg viewBox="0 0 24 24"><path d="M3 4h18v16H3zM3 10h18M7 15h4"/></svg></span><div><small>Current bills</small><strong id="billing-current-count">0</strong></div></article><article><span class="metric-icon amber"><svg viewBox="0 0 24 24"><path d="M12 9v4m0 4h.01M10.3 3.9 2.7 17a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg></span><div><small>Due this month</small><strong id="billing-due-count">0</strong></div></article><article><span class="metric-icon green"><svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></svg></span><div><small>Marked paid</small><strong id="billing-paid-count">0</strong></div></article><article><span class="metric-icon teal"><svg viewBox="0 0 24 24"><path d="M12 2v20m5-15H9a3 3 0 0 0 0 6h6a3 3 0 0 1 0 6H6"/></svg></span><div><small>Avg. monthly bill</small><strong id="billing-average">PKR 0</strong></div></article></div>
+          <div class="panel data-panel"><div class="table-toolbar"><div class="toolbar-search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input id="billing-search" type="search" placeholder="Search customer or account ID"></div><div class="toolbar-filters"><label class="select-label"><span>Payment status</span><select id="billing-status-filter"><option value="">All statuses</option><option>Due</option><option>Overdue</option><option>Paid</option></select></label></div><span class="record-count" id="billing-record-count"></span></div><div class="table-wrap"><table><thead><tr><th>Customer ID</th><th>Customer</th><th>Current bill</th><th>Due date</th><th>Payment status</th><th>Last payment</th><th>Action</th></tr></thead><tbody id="billing-rows"></tbody></table><div class="empty-state is-hidden" id="billing-empty">No billing records match these filters.</div></div><div class="table-foot"><span>Simulated billing only. No payment gateway is connected.</span><span id="billing-table-summary"></span></div></div>
+        </section>
+
+        <section class="view-section" id="section-profile" data-title="My profile">
+          <div class="page-heading"><div><span class="eyebrow">YOUR WORKSPACE</span><h1>My profile</h1><p>Fictional employee details for this local demo session.</p></div><button class="button button-outline" id="edit-profile"><svg viewBox="0 0 24 24"><path d="m15 5 4 4M4 20l4-.8L19 8a2.8 2.8 0 0 0-4-4L4 15l-0.8 5Z"/></svg>Edit profile</button></div>
+          <div class="profile-layout"><article class="profile-hero"><div class="avatar avatar-large">AS</div><span class="employee-active"><i></i> Active employee</span><h2 id="profile-name">Amina Shah</h2><p id="profile-designation">Operations Manager</p><span class="role-chip">ENTERPRISE OPERATIONS</span><div class="profile-id"><span>EMPLOYEE ID</span><strong id="profile-id">TCL-EMP-1048</strong></div></article><article class="panel profile-details"><div class="panel-heading"><div><h2>Profile details</h2><p>Employee information · Demo only</p></div><span class="simulated-tag">FICTIONAL</span></div><div class="profile-detail-grid"><div><span>Department</span><strong id="profile-department">Customer Operations</strong></div><div><span>Designation</span><strong id="profile-designation-detail">Operations Manager</strong></div><div><span>Work email</span><strong id="profile-email">amina.shah@tclgroup.com</strong></div><div><span>Contact number</span><strong id="profile-phone">+92 300 555 0148</strong></div><div><span>Assigned role</span><strong>Enterprise Operations Lead</strong></div><div><span>Office location</span><strong>Islamabad · Demo HQ</strong></div></div></article></div>
+        </section>
+
+        <footer class="page-footer"><span>Design and Developed By <strong>Digitalization Team</strong></span><span>Demo environment only. All employee, customer, billing, and network records are fictional.</span></footer>
+      </div>
+    </main>
+  </div>
+  <dialog class="app-dialog" id="app-dialog" aria-labelledby="dialog-title"><div class="dialog-content" id="dialog-content"></div></dialog>
+  <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
+</body>
+</html>
