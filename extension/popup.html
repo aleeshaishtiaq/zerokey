@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ZeroKey Telemetry</title>
+    <style>
+      body {
+        box-sizing: border-box;
+        width: 280px;
+        margin: 0;
+        padding: 18px;
+        color: #172b2b;
+        font: 14px/1.5 system-ui, sans-serif;
+      }
+      h1 { margin: 0 0 8px; font-size: 16px; }
+      p { margin: 8px 0; }
+      #status { font-weight: 600; }
+      .muted { color: #526565; font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <h1>ZeroKey Behavioral Telemetry</h1>
+    <p>Observes shortlisted keyboard and mouse features on localhost and Vercel portal pages.</p>
+    <p id="status" role="status">Checking local API…</p>
+    <p class="muted">Only feature summaries, a hashed device ID, and a session ID are sent. Typed text is not collected.</p>
+    <script src="popup.js"></script>
+  </body>
+</html>
