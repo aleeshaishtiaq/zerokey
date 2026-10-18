@@ -1,20 +1,22 @@
 # zerokey
-[![CI](https://github.com/aleeshaishtiaq/zerokey/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/aleeshaishtiaq/zerokey/actions/workflows/ci.yml)
+[![CI](https://github.com/aleeshaishtiaq/zerokey/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/aleeshaishtiaq/zerokey/actions/workflows/ci.yml)
 
 ZEROKEY - Zero Dependency Browser Extension for Continuous Post-Login Authentication and Active Cyber Deception
 
-## CI pipeline
+## Continuous Integration (CI)
 
-GitHub Actions runs on every push to `main` or `develop` and on pull requests
-targeting either branch. The **Lint and test** job uses Python 3.11, installs
-the backend requirements plus Flake8 and pytest, lints `src/` and `tests/`,
-then runs the Python test suite. The **Check required project files** job
-verifies the portal, extension manifest, API entry point, and dashboard files
-are present. A lint error or failed test fails its job.
+The GitHub Actions workflow `.github/workflows/ci.yml` runs on every push to
+`main` or `develop`, and on every pull request targeting `main` or `develop`.
+The **Lint and test** job sets up Python 3.11, installs `requirements.txt`,
+Flake8, and pytest, lints `src/` and `tests/`, then runs the tests in `tests/`.
+The **Check required project files** job verifies that `frontend/index.html`,
+`extension/manifest.json`, `src/api/main.py`, and the `dashboard/` directory
+with at least one file exist. Lint or test failures fail the workflow.
 
 To verify a run, push a commit to `main` or `develop` or open a pull request
 targeting one of those branches, then check the repository's **Actions** tab
-for a green CI run.
+for a green CI run. Continuous delivery/deployment (CD) is not configured:
+this workflow does not publish or deploy the application.
 
 ## Local behavioral telemetry POC
 
