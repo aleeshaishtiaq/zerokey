@@ -1,0 +1,141 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  font-family:
+    'Aptos',
+    'Segoe UI',
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  color: #111827;
+  background: #f3f7f7;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+html.dark {
+  color-scheme: dark;
+  background: #111827;
+}
+
+html.dark body {
+  color: #f3f4f6;
+  background: #111827;
+}
+
+.app-shell {
+  background: #f3f7f7;
+}
+
+.app-page {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: clamp(1rem, 2vw, 1.75rem);
+  background: #f3f7f7;
+}
+
+main .shadow-card,
+main .shadow-sm {
+  border-color: #e1e9e8;
+  box-shadow: 0 8px 24px -16px rgb(15 35 39 / 0.24), 0 2px 6px -3px rgb(15 35 39 / 0.12);
+}
+
+main table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+main thead tr {
+  background-color: #f5f8f8;
+}
+
+main th {
+  color: #667775;
+  font-size: 0.68rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+main td,
+main th {
+  border-color: #edf1f1;
+}
+
+main input[type='search'],
+main select {
+  border-color: #dce6e4;
+  border-radius: 0.65rem;
+  box-shadow: 0 1px 2px rgb(18 48 47 / 0.04);
+}
+
+main input[type='search']:focus,
+main select:focus {
+  border-color: #df454c;
+  box-shadow: 0 0 0 3px rgb(223 69 76 / 0.12);
+}
+
+html.dark [class~='bg-white'] {
+  background-color: #1f2937;
+}
+
+html.dark [class*='bg-gray-50'] {
+  background-color: #111827;
+}
+
+html.dark [class~='bg-gray-100'] {
+  background-color: #374151;
+}
+
+html.dark [class~='bg-brand-50'] {
+  background-color: #451f24;
+}
+
+html.dark [class~='text-gray-900'] {
+  color: #f3f4f6;
+}
+
+html.dark [class~='text-gray-700'],
+html.dark [class~='text-gray-600'] {
+  color: #d1d5db;
+}
+
+html.dark [class~='text-gray-500'],
+html.dark [class~='text-gray-400'] {
+  color: #9ca3af;
+}
+
+html.dark [class~='text-brand-700'] {
+  color: #fda4af;
+}
+
+html.dark [class~='border-gray-50'],
+html.dark [class~='border-gray-100'],
+html.dark [class~='border-gray-200'] {
+  border-color: #374151;
+}
+
+html.dark input,
+html.dark select,
+html.dark textarea {
+  color: #f3f4f6;
+  background-color: #1f2937;
+  border-color: #4b5563;
+}
+
+html.dark input::placeholder,
+html.dark textarea::placeholder {
+  color: #9ca3af;
+}
+
+html.dark [class*='hover:bg-gray-50']:hover {
+  background-color: #374151;
+}

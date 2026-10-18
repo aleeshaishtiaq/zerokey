@@ -223,6 +223,7 @@ __marimo__/
 # Ignore raw and processed data files
 data/raw/*
 !data/raw/.gitkeep
+data/raw/zerokey_captured/
 
 data/processed/*
 !data/processed/.gitkeep
