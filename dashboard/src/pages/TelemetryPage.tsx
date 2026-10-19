@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
+import { useAuth0 } from '@auth0/auth0-react';
 import { TopBar } from '../components/layout/TopBar';
 
-const TELEMETRY_API_URL = 'http://127.0.0.1:8765/api/telemetry/recent?limit=50';
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8765')
+  .replace(/\/+$/, '');
+const TELEMETRY_API_URL = `${API_BASE_URL}/api/telemetry/recent?limit=50`;
 
 interface TelemetryRecord {
   device_id: string;
@@ -14,6 +17,7 @@ interface TelemetryRecord {
 }
 
 export function TelemetryPage() {
+  const { getAccessTokenSilently } = useAuth0();
   const [records, setRecords] = useState<TelemetryRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -22,7 +26,10 @@ export function TelemetryPage() {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch(TELEMETRY_API_URL);
+      const accessToken = await getAccessTokenSilently();
+      const response = await fetch(TELEMETRY_API_URL, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
       if (!response.ok) {
         throw new Error(`Telemetry API returned HTTP ${response.status}.`);
       }
@@ -39,7 +46,7 @@ export function TelemetryPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [getAccessTokenSilently]);
 
   useEffect(() => {
     void refresh();
@@ -72,7 +79,7 @@ export function TelemetryPage() {
 
         {error && (
           <p role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error} Check that the FastAPI server is running on 127.0.0.1:8765.
+            {error} Check that the configured FastAPI API is reachable.
           </p>
         )}
 
