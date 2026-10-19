@@ -41,6 +41,11 @@ jobs:
       - name: Pull API project settings
         run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
       - name: Build API deployment
         run: vercel build --prod --token="$VERCEL_TOKEN"
 
