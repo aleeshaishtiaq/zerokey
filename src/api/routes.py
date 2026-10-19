@@ -1,4 +1,5 @@
 import json
+import os
 import threading
 from collections import deque
 from datetime import datetime, timezone
@@ -6,7 +7,7 @@ from pathlib import Path
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -15,13 +16,18 @@ from pydantic import (
     field_validator,
 )
 
+from .auth import require_authorized_user
+
 router = APIRouter()
-TELEMETRY_LOG_PATH = (
+_default_telemetry_log_path = (
     Path(__file__).resolve().parents[2]
     / "data"
     / "raw"
     / "zerokey_captured"
     / "telemetry_log.jsonl"
+)
+TELEMETRY_LOG_PATH = Path(
+    os.getenv("TELEMETRY_LOG_PATH", "").strip() or _default_telemetry_log_path
 )
 _records_lock = threading.Lock()
 
@@ -70,7 +76,11 @@ class TelemetryPayload(FeatureModel):
         return value
 
 
-@router.post("/telemetry", status_code=201)
+@router.post(
+    "/telemetry",
+    status_code=201,
+    dependencies=[Depends(require_authorized_user)],
+)
 def receive_telemetry(payload: TelemetryPayload) -> dict[str, str]:
     record: dict[str, object] = {
         **payload.model_dump(mode="json"),
@@ -95,6 +105,7 @@ def receive_telemetry(payload: TelemetryPayload) -> dict[str, str]:
 @router.get("/telemetry/recent")
 def get_recent_telemetry(
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    _: str = Depends(require_authorized_user),
 ) -> list[dict[str, object]]:
     with _records_lock:
         if not TELEMETRY_LOG_PATH.exists():
@@ -122,3 +133,8 @@ def get_recent_telemetry(
 @router.get("/health")
 def health_check() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@router.get("/auth/check", dependencies=[Depends(require_authorized_user)])
+def check_authorized_access() -> dict[str, str]:
+    return {"status": "authorized"}

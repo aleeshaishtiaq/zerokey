@@ -1,3 +1,5 @@
+import { beginPortalSignIn, initializePortalAuth, signOutPortal } from './auth.js';
+
 /* Local-only demo data. Every record below is fictional. */
 const customers = [
   {id:'TCL-CU-2041',name:'Sara Malik',service:'Fiber',contact:'+92 300 555 0101',email:'sara.malik@gmail.com',address:'Demo Sector 01, Islamabad',started:'Mar 14, 2024',router:'DEMO-RTR-2041',status:'Active',package:'Fiber Home 100',bill:4499,dues:0,signal:-48,complaint:'None',account:'DEMO-AC-70041',dueDate:'Oct 24, 2026',payment:'Paid',lastPayment:'Oct 03, 2026',history:['Oct 03 · Monthly bill marked paid','Sep 18 · Signal check completed','Sep 03 · Monthly bill marked paid']},
@@ -248,13 +250,19 @@ function runGlobalSearch() {
 }
 
 $('#login-form').addEventListener('submit',event=>{
-  event.preventDefault();const username=$('#username').value.trim().toLowerCase(),password=$('#password').value;
-  if(!username||!password){$('#login-error').textContent='Enter your username and password to continue.';return;}
-  if(username!=='demo.employee'||password!=='Demo@123'){$('#login-error').textContent='Those details did not match. Use the demo credentials shown below.';return;}
-  $('#login-error').textContent='';$('#login-screen').classList.add('is-hidden');$('#app-shell').classList.remove('is-hidden');renderOverview();renderCustomers();renderTickets();renderBilling();renderSuggestions();showToast('Signed in to the local TCL Enterprise demo.');
+  event.preventDefault();
+  void beginPortalSignIn().catch(error=>{
+    console.error('Unable to start Auth0 sign-in.',error);
+    $('#login-error').textContent=error instanceof Error
+      ? `Sign-in failed: ${error.message}`
+      : 'Staging sign-in is unavailable or not configured for an approved identity.';
+  });
 });
-$('#password-toggle').addEventListener('click',event=>{const input=$('#password'),visible=input.type==='password';input.type=visible?'text':'password';event.currentTarget.textContent=visible?'Hide':'Show';event.currentTarget.setAttribute('aria-label',visible?'Hide password':'Show password');});
-$('#logout-button').addEventListener('click',()=>{closeDialog();$('#app-shell').classList.add('is-hidden');$('#login-screen').classList.remove('is-hidden');$('#profile-menu').classList.add('is-hidden');$('#password').value='';$('#login-error').textContent='';showToast('You have signed out of the local demo.');});
+$('#logout-button').addEventListener('click',()=>{closeDialog();void signOutPortal();});
+void initializePortalAuth(
+  ()=>{$('#login-screen').classList.add('is-hidden');$('#app-shell').classList.remove('is-hidden');renderOverview();renderCustomers();renderTickets();renderBilling();renderSuggestions();},
+  message=>{$('#auth-status').textContent=message;},
+);
 $$('.nav-link[data-section]').forEach(link=>link.addEventListener('click',()=>switchSection(link.dataset.section)));
 $$('[data-go-section]').forEach(button=>button.addEventListener('click',()=>switchSection(button.dataset.goSection)));
 $$('[data-go-profile]').forEach(button=>button.addEventListener('click',()=>switchSection('profile')));

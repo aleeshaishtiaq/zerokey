@@ -17,13 +17,21 @@
       p { margin: 8px 0; }
       #status { font-weight: 600; }
       .muted { color: #526565; font-size: 12px; }
+      .callback { overflow-wrap: anywhere; font-family: ui-monospace, monospace; }
+      button { width: 100%; margin-top: 10px; padding: 8px; }
     </style>
   </head>
   <body>
     <h1>ZeroKey Behavioral Telemetry</h1>
-    <p>Observes shortlisted keyboard and mouse features on localhost and Vercel portal pages.</p>
+    <p>Collects shortlisted behavior features only from the configured portal after user activity.</p>
     <p id="status" role="status">Checking local API…</p>
     <p class="muted">Only feature summaries, a hashed device ID, and a session ID are sent. Typed text is not collected.</p>
+    <button id="sign-in" type="button">Sign in to staging</button>
+    <button id="sign-out" type="button">Sign out</button>
+    <p id="auth-status" class="muted" role="status"></p>
+    <p class="muted">Auth0 callback URL for this installed extension:</p>
+    <p id="redirect-uri" class="muted callback"></p>
+    <script src="config.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>

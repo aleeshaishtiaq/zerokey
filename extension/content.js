@@ -1,6 +1,7 @@
 const ALLOWED_PORTAL_ORIGINS = new Set([
   'http://localhost:5500',
   'http://127.0.0.1:5500',
+  globalThis.ZERO_KEY_CONFIG?.portalOrigin,
 ]);
 const WINDOW_DURATION_MS = 15_000;
 const PAUSE_THRESHOLD_MS = 500;
@@ -349,7 +350,7 @@ function sendWindowFeatures() {
   chrome.runtime.sendMessage({ type: 'telemetry-window', payload }).then(
     (response) => {
       if (response?.ok) {
-        setCollectorStatus('Saved to the local telemetry log.');
+        setCollectorStatus('Feature summary accepted by the configured API.');
       } else {
         const error = response?.error ?? 'The extension rejected the telemetry message.';
         setCollectorStatus(`Could not send telemetry: ${error}`);
@@ -365,7 +366,11 @@ function sendWindowFeatures() {
   clearWindowFeatures();
 }
 
-if (ALLOWED_PORTAL_ORIGINS.has(window.location.origin)) {
+function startCollector() {
+  if (!ALLOWED_PORTAL_ORIGINS.has(window.location.origin)) {
+    return;
+  }
+
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', connectCollectorStatus, { once: true });
   } else {
@@ -377,4 +382,21 @@ if (ALLOWED_PORTAL_ORIGINS.has(window.location.origin)) {
   document.addEventListener('keyup', onKeyUp, { passive: true });
   window.addEventListener('blur', () => heldKeys.clear());
   window.setInterval(sendWindowFeatures, WINDOW_DURATION_MS);
+}
+
+if (ALLOWED_PORTAL_ORIGINS.has(window.location.origin)) {
+  connectCollectorStatus();
+  chrome.runtime.sendMessage({ type: 'telemetry-ready' }).then(
+    (response) => {
+      if (response?.ok) {
+        startCollector();
+      } else {
+        setCollectorStatus(response?.error ?? 'Sign in from the extension popup to enable collection.');
+      }
+    },
+    (error) => {
+      console.error('Unable to check extension sign-in status.', error);
+      setCollectorStatus('Could not verify extension sign-in. Reload the portal after signing in.');
+    },
+  );
 }
