@@ -62,7 +62,7 @@ secrets. Required environment names:
 | Component | Required configuration |
 |---|---|
 | FastAPI | `AUTH0_DOMAIN`, `AUTH0_AUDIENCE`, `AUTH0_ALLOWED_SUBJECTS`, `CORS_ALLOWED_ORIGINS`, `TELEMETRY_LOG_PATH`; Render supplies `PORT` |
-| Portal static-site build | `VITE_AUTH0_DOMAIN`, `VITE_AUTH0_CLIENT_ID`, `VITE_AUTH0_AUDIENCE`, `VITE_API_BASE_URL` |
+| Portal static-site build | `VITE_AUTH0_DOMAIN`, `VITE_AUTH0_CLIENT_ID`, `VITE_AUTH0_AUDIENCE`, `VITE_API_URL` |
 | Dashboard static-site build | The same four `VITE_*` settings as the portal |
 | Extension | `auth0Domain`, `auth0ClientId`, `auth0Audience`, `apiOrigin`, and `portalOrigin` in `extension/config.js`; the extension requests optional permissions for only those configured origins |
 
