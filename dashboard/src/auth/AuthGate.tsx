@@ -4,7 +4,9 @@ import { useEffect, useState, type ReactNode } from 'react';
 const domain = import.meta.env.VITE_AUTH0_DOMAIN?.trim();
 const clientId = import.meta.env.VITE_AUTH0_CLIENT_ID?.trim();
 const audience = import.meta.env.VITE_AUTH0_AUDIENCE?.trim();
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim().replace(/\/+$/, '');
+const apiBaseUrl = (
+  import.meta.env.VITE_API_URL || 'http://127.0.0.1:8765'
+).trim().replace(/\/+$/, '');
 
 export function AuthGate({ children }: { children: ReactNode }) {
   if (!domain || !clientId || !audience || !apiBaseUrl) {
