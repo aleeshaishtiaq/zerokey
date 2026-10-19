@@ -91,6 +91,25 @@ def test_recent_telemetry_excludes_legacy_records(tmp_path, monkeypatch):
     assert routes.get_recent_telemetry(limit=10) == []
 
 
+def test_recent_telemetry_skips_malformed_and_schema_invalid_records(tmp_path, monkeypatch):
+    log_path = tmp_path / "telemetry.jsonl"
+    valid_record = make_payload().model_dump(mode="json")
+    log_path.write_text(
+        "not json\n"
+        + json.dumps({"collection_version": 2, "device_id": "bad"})
+        + "\n"
+        + json.dumps(valid_record)
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(routes, "TELEMETRY_LOG_PATH", log_path)
+
+    recent_records = routes.get_recent_telemetry(limit=10)
+
+    assert len(recent_records) == 1
+    assert recent_records[0]["session_id"] == valid_record["session_id"]
+
+
 def test_http_data_routes_fail_closed_until_auth0_allowlist_is_configured(monkeypatch):
     for setting in ("AUTH0_DOMAIN", "AUTH0_AUDIENCE", "AUTH0_ALLOWED_SUBJECTS"):
         monkeypatch.setenv(setting, "")
