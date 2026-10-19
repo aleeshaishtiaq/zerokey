@@ -150,9 +150,11 @@ activemq-data/
 *.sage.py
 
 # Environments
-.env
+.env*
+!.env.example
 .envrc
 .venv
+node_modules/
 env/
 venv/
 ENV/
@@ -223,7 +225,10 @@ __marimo__/
 # Ignore raw and processed data files
 data/raw/*
 !data/raw/.gitkeep
+data/raw/zerokey_captured/
 
 data/processed/*
 !data/processed/.gitkeep
+
+telemetry_log.jsonl
 ```

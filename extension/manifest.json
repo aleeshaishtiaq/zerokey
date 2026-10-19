@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "ZeroKey Behavioral Telemetry",
+  "version": "1.4.0",
+  "description": "Collects privacy-preserving behavioral feature summaries on the ZeroKey portal.",
+  "permissions": [
+    "storage",
+    "identity",
+    "scripting"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "http://localhost/*",
+    "https://api.ipify.org/*"
+  ],
+  "optional_host_permissions": [
+    "https://*.auth0.com/*",
+    "https://*.onrender.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://localhost/*",
+        "http://127.0.0.1/*"
+      ],
+      "js": [
+        "config.js",
+        "content.js"
+      ],
+      "run_at": "document_start"
+    }
+  ]
+}

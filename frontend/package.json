@@ -1,0 +1,17 @@
+{
+  "name": "zerokey-enterprise-portal",
+  "version": "1.0.0",
+  "description": "",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite --host 127.0.0.1 --port 5500"
+  },
+  "dependencies": {
+    "@auth0/auth0-spa-js": "^2.28.4"
+  },
+  "devDependencies": {
+    "vite": "^5.4.21"
+  }
+}
