@@ -228,3 +228,123 @@ Each record contains a SHA-256 device identifier, a per-tab session UUID
 ipify when available, and only the shortlisted mouse and keyboard aggregates.
 The extension emits aggregate features rather than transmitting typed text,
 raw event rows, coordinates, or key values.
+
+## Research data processing pipeline
+
+The batch pipeline processes the research datasets under `data/raw/` without
+changing the live browser telemetry collector. Session `0` is the default
+training session. The session can be changed explicitly to `1` or `2`.
+
+### Dataset inputs
+
+Keystroke files are read from both condition directories:
+
+```text
+data/raw/UB_keystroke_dataset/s0/baseline/
+data/raw/UB_keystroke_dataset/s0/rotation/
+```
+
+Each keystroke row contains a key name, `KeyDown` or `KeyUp`, and an integer
+timestamp in milliseconds. Keystroke filenames use `UUUSKT.txt`: `UUU` is the
+subject ID, `S` is the session, `K` is the keyboard code, and `T` is the task.
+Keyboard codes are `0` Lenovo, `1` HP wireless, `2` Microsoft, and `3` Apple
+Bluetooth. Task `0` is transcription; task `1` is free-text questions and
+routine-work activities. The subset is derived only from the actual
+`baseline` or `rotation` directory. The implementation validates that the
+filename session agrees with the parent `s0`, `s1`, or `s2` directory.
+
+Mouse files are cross-referenced by exact basename against valid keystroke
+files across all sessions. A mouse file is selected for a requested session
+only when it has exactly one keystroke counterpart whose documented session
+matches. Mouse records preserve the original filename and suffix, and attach
+the matched keystroke metadata under `keystroke_reference`. This is provenance
+from the keystroke dataset, not independently documented mouse acquisition
+semantics. Mouse condition, timestamp unit, epoch, synchronization, and event
+alignment remain unknown; mouse records therefore use `condition: "unverified"`.
+Unmatched and ambiguous mouse files are skipped and reported. The observed
+suffix groups are `000/001`, `010/011`, `020/021`, `100/101`, `120/121`,
+`130/131`, `200/201`, `210/211`, and `230/231`; these observations are not a
+scientific whitelist for unseen data.
+
+For example, the following meanings are verified for keystroke folders and
+filenames, while the mouse fields are cross-referenced or unverified:
+
+| Dataset | Example | Meaning |
+| --- | --- | --- |
+| Mouse | `001000.txt` | Original filename and suffix `000`; session/subset come from unique keystroke reference |
+| Mouse | `001001.txt` | Original filename and suffix `001`; session/subset come from unique keystroke reference |
+| Keystroke | `data/raw/UB_keystroke_dataset/s0/baseline/` | Session 0 baseline data |
+| Keystroke | `data/raw/UB_keystroke_dataset/s0/rotation/` | Session 0 rotation data |
+
+### Running the pipeline
+
+Install development dependencies and run the default session:
+
+```powershell
+python -m pip install -r requirements-dev.txt
+python -m src.data_pipeline.pipeline --session 0
+```
+
+The default command also works without `--session`. To process another
+supported session, pass `--session 1` or `--session 2`. Input and output roots
+can be overridden with `--input-root` and `--output-root`.
+
+### Outputs and cleaning
+
+Session 0 writes:
+
+```text
+data/processed/keystroke_session0_processed.jsonl
+data/processed/mouse_session0_processed.jsonl
+```
+
+Each line is one validated JSON object preserving the dataset, subject, session,
+condition, raw filename suffix, original filename, event type, timestamp, source
+file, and source line. Keystroke records also preserve the key, action,
+`keyboard_code`, and `task_id`; mouse records preserve coordinates and the
+exact-basename keystroke provenance. No timestamp conversion or cross-modality
+alignment is performed.
+Records are ordered by timestamp, source path, and source line. Exact repeated
+reads of the same source line are deduplicated, while legitimate repeated
+events on separate source lines remain. Invalid rows, unreadable files, and
+unexpected formats are skipped with a warning and counted in the summary.
+Non-finite numeric values cannot be written because JSON serialization uses
+`allow_nan=False`; malformed records are never included in valid output.
+
+Illustrative input and output records:
+
+```text
+Input:  LMenu KeyDown 63578429757751
+Output: {"action":"KeyDown","condition":"baseline","dataset":"keystroke","event_type":"keyboard","filename_suffix":"000","keyboard_code":0,"key":"LMenu","line_number":1,"original_filename":"001000.txt","session":0,"source_file":"data/raw/UB_keystroke_dataset/s0/baseline/001000.txt","subject_id":"001","task_id":0,"timestamp":63578429757751}
+
+Input:  635784297580483748 | ... | Mouse Coordinates | 611,676
+Output: {"condition":"unverified","dataset":"mouse","event_type":"mouse_move","filename_suffix":"000","keystroke_reference":{"keyboard_code":0,"mapping_basis":"unique_exact_basename_match","session":0,"source_file":"data/raw/UB_keystroke_dataset/s0/baseline/001000.txt","subject_id":"001","subset":"baseline","task_id":0},"line_number":12,"original_filename":"001000.txt","session":0,"source_file":"data/raw/UB_mouse_and_events_dataset/001000.txt","subject_id":"001","timestamp":635784297580483748,"x":611,"y":676}
+```
+
+### Tests
+
+Run the full suite with:
+
+```powershell
+python -m pytest
+```
+
+### Research-use restriction and citation
+
+The UB Keystroke Dataset is for research purposes only and must not be used
+commercially. Academic or research reports using it must cite: Yan Sun,
+Hayreddin Ceker, and Shambhu Upadhyaya, “Shared Keystroke Dataset for
+Continuous Authentication,” 8th IEEE International Workshop on Information
+Forensics and Security, Abu Dhabi, UAE, December 2016.
+
+## Live demo and deployment runbooks
+
+The exact local live-demo rehearsal, Auth0 checklist, teammate setup, and
+Vercel environment-variable checklist are maintained in:
+
+- `docs/live-demo-runbook.md`
+- `docs/vercel-env-checklist.md`
+
+The repository does not contain a committed local `.env`, `.env.local`, Auth0
+secret, Vercel token, or private key. The extension Native Application client
+ID remains a manual local configuration value in `extension/config.js`.
