@@ -336,3 +336,15 @@ commercially. Academic or research reports using it must cite: Yan Sun,
 Hayreddin Ceker, and Shambhu Upadhyaya, “Shared Keystroke Dataset for
 Continuous Authentication,” 8th IEEE International Workshop on Information
 Forensics and Security, Abu Dhabi, UAE, December 2016.
+
+## Live demo and deployment runbooks
+
+The exact local live-demo rehearsal, Auth0 checklist, teammate setup, and
+Vercel environment-variable checklist are maintained in:
+
+- `docs/live-demo-runbook.md`
+- `docs/vercel-env-checklist.md`
+
+The repository does not contain a committed local `.env`, `.env.local`, Auth0
+secret, Vercel token, or private key. The extension Native Application client
+ID remains a manual local configuration value in `extension/config.js`.
