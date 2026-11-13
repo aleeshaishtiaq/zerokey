@@ -80,9 +80,7 @@ def extract_keyboard_features(
         key=lambda record: (record.timestamp, record.line_number),
     )
     key_downs = [record for record in ordered if record.action == "KeyDown"]
-    key_ups = [record for record in ordered if record.action == "KeyUp"]
     down_times = [record.timestamp for record in key_downs]
-    up_times = [record.timestamp for record in key_ups]
 
     press_to_press = _positive_deltas(down_times)
     pause_intervals = [value for value in press_to_press if value >= pause_threshold_ticks]
