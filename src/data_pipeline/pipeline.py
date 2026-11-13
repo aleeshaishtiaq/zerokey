@@ -16,6 +16,7 @@ from .parsers import (
     build_keystroke_reference_index,
     validate_session,
 )
+from .features import BehavioralFeatureSummary, build_feature_summary
 
 LOGGER = logging.getLogger(__name__)
 DEFAULT_INPUT_ROOT = Path("data/raw")
@@ -86,6 +87,47 @@ def write_jsonl(records: list[NormalizedEvent], output_path: Path) -> int:
     return len(ordered_records)
 
 
+def write_feature_jsonl(
+    summaries: list[BehavioralFeatureSummary], output_path: Path
+) -> int:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8", newline="\n") as output_file:
+        for summary in sorted(summaries, key=lambda item: item.original_filename):
+            output_file.write(
+                json.dumps(summary.model_dump(mode="json"), allow_nan=False, sort_keys=True)
+            )
+            output_file.write("\n")
+    return len(summaries)
+
+
+def build_feature_summaries(
+    keystroke_records: list[NormalizedEvent],
+    mouse_records: list[NormalizedEvent],
+    *,
+    ticks_per_second: float | None = None,
+    pause_threshold_ticks: int = 500,
+) -> list[BehavioralFeatureSummary]:
+    """Align existing parsed records by basename and engineer one summary per file."""
+
+    keyboard_by_file: dict[str, list[NormalizedEvent]] = {}
+    for record in keystroke_records:
+        keyboard_by_file.setdefault(record.original_filename, []).append(record)
+    mouse_by_file: dict[str, list[NormalizedEvent]] = {}
+    for record in mouse_records:
+        mouse_by_file.setdefault(record.original_filename, []).append(record)
+
+    summaries: list[BehavioralFeatureSummary] = []
+    for filename in sorted(set(keyboard_by_file) & set(mouse_by_file)):
+        summaries.append(
+            build_feature_summary(
+                keyboard_by_file[filename] + mouse_by_file[filename],
+                ticks_per_second=ticks_per_second,
+                pause_threshold_ticks=pause_threshold_ticks,
+            )
+        )
+    return summaries
+
+
 def _process_result(
     dataset: str,
     result: ParseResult,
@@ -147,8 +189,6 @@ def process_session(
             output_root / f"keystroke_session{session}_processed.jsonl",
         )
     ]
-    del keystroke_result
-
     mouse_result = parse_mouse_dataset(
         input_root / "UB_mouse_and_events_dataset",
         session=session,
@@ -161,6 +201,15 @@ def process_session(
             output_root / f"mouse_session{session}_processed.jsonl",
         )
     )
+    feature_summaries = build_feature_summaries(
+        keystroke_result.records,
+        mouse_result.records,
+    )
+    feature_output_path = output_root / f"features_session{session}_processed.jsonl"
+    written_features = write_feature_jsonl(feature_summaries, feature_output_path)
+    LOGGER.info("features: written_events=%d", written_features)
+    del keystroke_result
+    del mouse_result
     return summaries
 
 

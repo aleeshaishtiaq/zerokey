@@ -19,6 +19,10 @@ MOUSE_COORDINATE_PATTERN = re.compile(
     r"^\s*(?P<timestamp>\d+)\s*\|.*?\|\s*Mouse Coordinates\s*\|\s*"
     r"(?P<x>-?\d+)\s*,\s*(?P<y>-?\d+)\s*$"
 )
+MOUSE_CLICK_PATTERN = re.compile(
+    r"^\s*(?P<timestamp>\d+)\s*\|.*?\|\s*Mouse\s+(?:Click|Button)\b.*$",
+    re.IGNORECASE,
+)
 
 
 class KeystrokeReference(BaseModel):
@@ -290,10 +294,35 @@ def parse_mouse_dataset(
             continue
         result.stats.raw_lines_read += len(lines)
         for line_number, line in enumerate(lines, start=1):
-            if "Mouse Coordinates" not in line:
+            if "Mouse Coordinates" not in line and not re.search(
+                r"Mouse\s+(?:Click|Button)\b", line, re.IGNORECASE
+            ):
                 result.stats.metadata_lines_ignored += 1
                 continue
             result.stats.candidate_events += 1
+            click_match = MOUSE_CLICK_PATTERN.match(line)
+            if click_match:
+                try:
+                    result.records.append(
+                        NormalizedEvent(
+                            dataset="mouse",
+                            subject_id=reference.subject_id,
+                            session=reference.session,
+                            condition="unverified",
+                            filename_suffix=path.stem[3:],
+                            original_filename=path.name,
+                            observed_session_digit=int(path.stem[3]),
+                            event_type="mouse_click",
+                            timestamp=int(click_match.group("timestamp")),
+                            source_file=path.as_posix(),
+                            line_number=line_number,
+                            keystroke_reference=reference,
+                        )
+                    )
+                    result.stats.accepted_events += 1
+                except (TypeError, ValueError) as error:
+                    _issue(result, path, line_number, f"invalid mouse-click record: {error}")
+                continue
             match = MOUSE_COORDINATE_PATTERN.match(line)
             if not match:
                 _issue(result, path, line_number, "invalid mouse-coordinate record")

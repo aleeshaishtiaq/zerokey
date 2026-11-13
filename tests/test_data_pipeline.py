@@ -4,10 +4,12 @@ from pathlib import Path
 import pytest
 
 from src.data_pipeline.parsers import (
+    NormalizedEvent,
     build_keystroke_reference_index,
     parse_keystroke_dataset,
     parse_mouse_dataset,
 )
+from src.data_pipeline.features import extract_keyboard_features, extract_mouse_features
 from src.data_pipeline.pipeline import process_session
 from src.data_pipeline.pipeline import _deduplicate
 
@@ -163,6 +165,19 @@ def test_mouse_records_include_unique_keystroke_reference_and_raw_timestamp(tmp_
     assert record.keystroke_reference.mapping_basis == "unique_exact_basename_match"
 
 
+def test_mouse_click_rows_are_parsed_when_the_event_label_is_present(tmp_path):
+    input_root = make_input_root(tmp_path)
+    write(
+        input_root / "UB_mouse_and_events_dataset" / "001000.txt",
+        "10 | date | Mouse Click | Left\n",
+    )
+
+    result = parse_mouse_dataset(input_root / "UB_mouse_and_events_dataset")
+
+    assert result.records[0].event_type == "mouse_click"
+    assert result.records[0].timestamp == 10
+
+
 def test_mouse_ambiguous_reference_is_skipped(tmp_path):
     key_root = tmp_path / "UB_keystroke_dataset"
     write(key_root / "s0" / "baseline" / "001000.txt", "A KeyDown 1\n")
@@ -176,6 +191,132 @@ def test_mouse_ambiguous_reference_is_skipped(tmp_path):
     assert result.records == []
     assert result.stats.ambiguous_files == 1
     assert result.stats.files_skipped_reasons["ambiguous_keystroke_reference"] == 1
+
+
+def test_keyboard_features_cover_timing_pauses_and_rollover(tmp_path):
+    records = []
+    for line_number, (key, action, timestamp) in enumerate(
+        (
+            ("A", "KeyDown", 0),
+            ("B", "KeyDown", 100),
+            ("A", "KeyUp", 200),
+            ("B", "KeyUp", 300),
+            ("C", "KeyDown", 1000),
+            ("C", "KeyUp", 1100),
+        ),
+        start=1,
+    ):
+        records.append(
+            NormalizedEvent(
+                dataset="keystroke",
+                subject_id="001",
+                session=0,
+                condition="baseline",
+                filename_suffix="000",
+                original_filename="001000.txt",
+                observed_session_digit=0,
+                event_type="keyboard",
+                timestamp=timestamp,
+                source_file="s0/baseline/001000.txt",
+                line_number=line_number,
+                keyboard_code=0,
+                task_id=0,
+                key=key,
+                action=action,
+            )
+        )
+
+    features = extract_keyboard_features(records, pause_threshold_ticks=500, ticks_per_second=1000)
+
+    assert features.dwell_time_ticks_mean == pytest.approx(166.66666666666666)
+    assert features.pause_count == 1
+    assert features.pause_duration_ticks_mean == 900
+    assert features.rollover_ratio == pytest.approx(1 / 3)
+    assert features.typing_rate_keystrokes_per_minute == pytest.approx(1800)
+
+
+def test_mouse_features_cover_geometry_direction_and_click_intervals():
+    records = [
+        NormalizedEvent(
+            dataset="mouse",
+            subject_id="001",
+            session=0,
+            condition="unverified",
+            filename_suffix="000",
+            original_filename="001000.txt",
+            observed_session_digit=0,
+            event_type="mouse_move",
+            timestamp=0,
+            source_file="001000.txt",
+            line_number=1,
+            x=0,
+            y=0,
+        ),
+        NormalizedEvent(
+            dataset="mouse",
+            subject_id="001",
+            session=0,
+            condition="unverified",
+            filename_suffix="000",
+            original_filename="001000.txt",
+            observed_session_digit=0,
+            event_type="mouse_move",
+            timestamp=10,
+            source_file="001000.txt",
+            line_number=2,
+            x=3,
+            y=4,
+        ),
+        NormalizedEvent(
+            dataset="mouse",
+            subject_id="001",
+            session=0,
+            condition="unverified",
+            filename_suffix="000",
+            original_filename="001000.txt",
+            observed_session_digit=0,
+            event_type="mouse_move",
+            timestamp=20,
+            source_file="001000.txt",
+            line_number=3,
+            x=6,
+            y=4,
+        ),
+        NormalizedEvent(
+            dataset="mouse",
+            subject_id="001",
+            session=0,
+            condition="unverified",
+            filename_suffix="000",
+            original_filename="001000.txt",
+            observed_session_digit=0,
+            event_type="mouse_click",
+            timestamp=5,
+            source_file="001000.txt",
+            line_number=4,
+        ),
+        NormalizedEvent(
+            dataset="mouse",
+            subject_id="001",
+            session=0,
+            condition="unverified",
+            filename_suffix="000",
+            original_filename="001000.txt",
+            observed_session_digit=0,
+            event_type="mouse_click",
+            timestamp=15,
+            source_file="001000.txt",
+            line_number=5,
+        ),
+    ]
+
+    features = extract_mouse_features(records, ticks_per_second=1000)
+
+    assert features.path_length_px == 8
+    assert features.displacement_px == pytest.approx((6**2 + 4**2) ** 0.5)
+    assert features.straightness_ratio == pytest.approx((52**0.5) / 8)
+    assert features.direction_changes_per_second == pytest.approx(50)
+    assert features.click_interval_ticks_mean == 10
 
 
 def test_pipeline_rejects_invalid_session(tmp_path):
