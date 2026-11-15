@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import threading
 from collections import deque
@@ -15,10 +16,12 @@ from pydantic import (
     IPvAnyAddress,
     field_validator,
 )
+from pydantic import ValidationError
 
 from .auth import require_authorized_user
 
 router = APIRouter()
+LOGGER = logging.getLogger(__name__)
 _default_telemetry_log_path = (
     Path(__file__).resolve().parents[2]
     / "data"
@@ -114,14 +117,26 @@ def get_recent_telemetry(
         try:
             with TELEMETRY_LOG_PATH.open("r", encoding="utf-8") as log_file:
                 recent_records: deque[dict[str, object]] = deque(maxlen=limit)
-                for line in log_file:
-                    record = json.loads(line)
-                    if not isinstance(record, dict):
-                        raise ValueError("Telemetry log entries must be JSON objects.")
-                    if record.get("collection_version") == 2:
-                        record.setdefault("public_ip_address", None)
-                        recent_records.append(record)
-        except (OSError, ValueError) as error:
+                for line_number, line in enumerate(log_file, start=1):
+                    try:
+                        record = json.loads(line)
+                        if not isinstance(record, dict):
+                            raise ValueError("Telemetry log entries must be JSON objects.")
+                        if record.get("collection_version") != 2:
+                            continue
+                        validated_record = TelemetryPayload.model_validate(record)
+                    except (json.JSONDecodeError, TypeError, ValueError, ValidationError) as error:
+                        LOGGER.warning(
+                            "Skipping invalid telemetry record in %s at line %d: %s",
+                            TELEMETRY_LOG_PATH,
+                            line_number,
+                            error,
+                        )
+                        continue
+                    recent_records.append(
+                        validated_record.model_dump(mode="json", exclude_none=False)
+                    )
+        except OSError as error:
             raise HTTPException(
                 status_code=500,
                 detail="Unable to read the persisted telemetry records.",
