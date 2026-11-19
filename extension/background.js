@@ -4,9 +4,14 @@ const CONFIG = globalThis.ZERO_KEY_CONFIG;
 const DEVICE_ID_KEY = 'device_id';
 const ACCESS_TOKEN_KEY = 'auth0_access_token';
 const ACCESS_TOKEN_EXPIRY_KEY = 'auth0_access_token_expiry';
+const TELEMETRY_CONSENT_KEY = 'telemetry_consent';
+const PUBLIC_IP_ENABLED_KEY = 'public_ip_lookup_enabled';
+const PUBLIC_IP_KEY = 'public_ip_address';
+const PUBLIC_IP_FETCHED_AT_KEY = 'public_ip_fetched_at';
+const PUBLIC_IP_CACHE_TTL_MS = 15 * 60 * 1000;
+const IPIFY_URL = 'https://api.ipify.org?format=json';
+const IPIFY_PERMISSION = 'https://api.ipify.org/*';
 const TELEMETRY_API_URL = `${CONFIG.apiOrigin.replace(/\/+$/, '')}/api/telemetry`;
-const PUBLIC_IP_CACHE_KEY = 'public_ip_cache';
-const PUBLIC_IP_CACHE_DURATION_MS = 15 * 60 * 1000;
 const ALLOWED_PORTAL_ORIGINS = new Set([
   'http://localhost:5500',
   'http://127.0.0.1:5500',
@@ -142,17 +147,8 @@ async function getAccessToken() {
 
 async function registerHostedPortalScript() {
   const portal = new URL(CONFIG.portalOrigin);
-  if (portal.protocol !== 'https:' || !portal.hostname.endsWith('.onrender.com')) {
+  if (portal.protocol !== 'https:') {
     return;
-  }
-
-  async function unregisterHostedPortalScript() {
-    const registered = await chrome.scripting.getRegisteredContentScripts({
-      ids: ['zerokey-hosted-portal'],
-    });
-    if (registered.length) {
-      await chrome.scripting.unregisterContentScripts({ ids: ['zerokey-hosted-portal'] });
-    }
   }
 
   const originPattern = `${portal.origin}/*`;
@@ -177,6 +173,15 @@ async function registerHostedPortalScript() {
   ]);
 }
 
+async function unregisterHostedPortalScript() {
+  const registered = await chrome.scripting.getRegisteredContentScripts({
+    ids: ['zerokey-hosted-portal'],
+  });
+  if (registered.length) {
+    await chrome.scripting.unregisterContentScripts({ ids: ['zerokey-hosted-portal'] });
+  }
+}
+
 async function getDeviceId() {
   const stored = await chrome.storage.local.get(DEVICE_ID_KEY);
   if (typeof stored[DEVICE_ID_KEY] === 'string') {
@@ -195,16 +200,75 @@ async function getDeviceId() {
   return deviceId;
 }
 
-async function forwardTelemetry(payload) {
-  const accessToken = await getAccessToken();
-  let publicIpAddress = null;
+function isValidIpAddress(value) {
+  const ipv4Parts = value.split('.');
+  if (
+    ipv4Parts.length === 4 &&
+    ipv4Parts.every((part) => /^(0|[1-9]\d{0,2})$/.test(part) && Number(part) <= 255)
+  ) {
+    return true;
+  }
+  if (!value.includes(':')) {
+    return false;
+  }
   try {
-    publicIpAddress = await getPublicIpAddress();
-  } catch (error) {
-    console.warn('Public IP lookup failed; sending behavioral features without an IP.', error);
+    return new URL(`http://[${value}]/`).hostname.startsWith('[');
+  } catch {
+    return false;
+  }
+}
+
+async function getPublicIpAddress() {
+  const settings = await chrome.storage.local.get(PUBLIC_IP_ENABLED_KEY);
+  if (settings[PUBLIC_IP_ENABLED_KEY] !== true) {
+    return { address: null, status: 'disabled' };
   }
 
+  const hasPermission = await chrome.permissions.contains({ origins: [IPIFY_PERMISSION] });
+  if (!hasPermission) {
+    return { address: null, status: 'permission_missing' };
+  }
+
+  const saved = await chrome.storage.session.get([PUBLIC_IP_KEY, PUBLIC_IP_FETCHED_AT_KEY]);
+  if (
+    typeof saved[PUBLIC_IP_KEY] === 'string' &&
+    typeof saved[PUBLIC_IP_FETCHED_AT_KEY] === 'number' &&
+    Date.now() - saved[PUBLIC_IP_FETCHED_AT_KEY] < PUBLIC_IP_CACHE_TTL_MS
+  ) {
+    return { address: saved[PUBLIC_IP_KEY], status: 'available' };
+  }
+
+  try {
+    const response = await fetch(IPIFY_URL, {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!response.ok) {
+      throw new Error(`ipify returned HTTP ${response.status}.`);
+    }
+    const result = await response.json();
+    if (typeof result.ip !== 'string' || !isValidIpAddress(result.ip)) {
+      throw new Error('ipify returned an invalid IP address.');
+    }
+    await chrome.storage.session.set({
+      [PUBLIC_IP_KEY]: result.ip,
+      [PUBLIC_IP_FETCHED_AT_KEY]: Date.now(),
+    });
+    return { address: result.ip, status: 'available' };
+  } catch (error) {
+    console.warn('Unable to look up the public IP with ipify.', error);
+    return { address: null, status: 'lookup_failed' };
+  }
+}
+
+async function forwardTelemetry(payload) {
+  const consent = await chrome.storage.local.get(TELEMETRY_CONSENT_KEY);
+  if (consent[TELEMETRY_CONSENT_KEY] !== true) {
+    throw new Error('Telemetry consent is required before sending behavior features.');
+  }
+  const accessToken = await getAccessToken();
   const deviceId = await getDeviceId();
+  const publicIp = await getPublicIpAddress();
   const response = await fetch(TELEMETRY_API_URL, {
     method: 'POST',
     headers: {
@@ -214,7 +278,7 @@ async function forwardTelemetry(payload) {
     body: JSON.stringify({
       ...payload,
       device_id: deviceId,
-      public_ip_address: publicIpAddress,
+      public_ip_address: publicIp.address,
     }),
   });
 
@@ -238,38 +302,83 @@ async function forwardTelemetry(payload) {
     }
     throw new Error(`Telemetry API returned HTTP ${response.status}: ${detail}`);
   }
-}
-
-async function getPublicIpAddress() {
-  const cached = await chrome.storage.session.get(PUBLIC_IP_CACHE_KEY);
-  const cachedIp = cached[PUBLIC_IP_CACHE_KEY];
-  if (
-    cachedIp &&
-    typeof cachedIp.address === 'string' &&
-    typeof cachedIp.fetchedAt === 'number' &&
-    Date.now() - cachedIp.fetchedAt < PUBLIC_IP_CACHE_DURATION_MS
-  ) {
-    return cachedIp.address;
-  }
-
-  const response = await fetch('https://api.ipify.org?format=json', {
-    signal: AbortSignal.timeout(5_000),
-  });
-  if (!response.ok) {
-    throw new Error(`Public IP lookup returned HTTP ${response.status}.`);
-  }
-  const result = await response.json();
-  if (typeof result.ip !== 'string') {
-    throw new Error('Public IP lookup returned an invalid response.');
-  }
-  await chrome.storage.session.set({
-    [PUBLIC_IP_CACHE_KEY]: { address: result.ip, fetchedAt: Date.now() },
-  });
-  return result.ip;
+  return { public_ip_status: publicIp.status };
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const senderOrigin = sender.tab?.url ? new URL(sender.tab.url).origin : null;
+  if (message?.type === 'portal-enable') {
+    if (sender.tab || sender.url !== chrome.runtime.getURL('popup.html')) {
+      sendResponse({ ok: false, error: 'Portal access must be enabled from the extension popup.' });
+      return false;
+    }
+    registerHostedPortalScript().then(
+      () => sendResponse({ ok: true }),
+      (error) => {
+        console.error('Unable to register the configured hosted portal.', error);
+        sendResponse({ ok: false, error: 'Unable to enable the configured portal.' });
+      },
+    );
+    return true;
+  }
+
+  if (message?.type === 'portal-auth') {
+    if (
+      !senderOrigin ||
+      !ALLOWED_PORTAL_ORIGINS.has(senderOrigin) ||
+      typeof message.access_token !== 'string' ||
+      typeof message.expires_at !== 'number' ||
+      message.expires_at <= Date.now() + 30_000
+    ) {
+      sendResponse({ ok: false, error: 'Invalid portal authentication message.' });
+      return false;
+    }
+    (async () => {
+      const accessCheck = await fetch(`${CONFIG.apiOrigin.replace(/\/+$/, '')}/api/auth/check`, {
+        headers: { Authorization: `Bearer ${message.access_token}` },
+      });
+      if (!accessCheck.ok) {
+        throw new Error(`The API did not approve this identity (HTTP ${accessCheck.status}).`);
+      }
+      await chrome.storage.session.set({
+        [ACCESS_TOKEN_KEY]: message.access_token,
+        [ACCESS_TOKEN_EXPIRY_KEY]: message.expires_at,
+      });
+      await chrome.storage.local.set({ [TELEMETRY_CONSENT_KEY]: true });
+      await getDeviceId();
+      await registerHostedPortalScript();
+      sendResponse({ ok: true });
+    })().catch((error) => {
+      console.error('Unable to validate portal authentication for telemetry.', error);
+      sendResponse({
+        ok: false,
+        error: error instanceof Error ? error.message : 'Portal authentication failed.',
+      });
+    });
+    return true;
+  }
+
+  if (message?.type === 'portal-consent') {
+    if (!senderOrigin || !ALLOWED_PORTAL_ORIGINS.has(senderOrigin) || message.consent !== false) {
+      sendResponse({ ok: false, error: 'Invalid telemetry consent message.' });
+      return false;
+    }
+    chrome.storage.local.set({ [TELEMETRY_CONSENT_KEY]: false }).then(
+      () => chrome.storage.session.remove([ACCESS_TOKEN_KEY, ACCESS_TOKEN_EXPIRY_KEY]).then(
+        () => sendResponse({ ok: true }),
+        (error) => {
+          console.error('Unable to clear portal telemetry credentials.', error);
+          sendResponse({ ok: false, error: 'Consent withdrawn, but sign-in cleanup failed.' });
+        },
+      ),
+      (error) => {
+        console.error('Unable to save telemetry consent withdrawal.', error);
+        sendResponse({ ok: false, error: 'Unable to save the consent choice.' });
+      },
+    );
+    return true;
+  }
+
   if (message?.type === 'auth-login') {
     if (sender.tab || sender.url !== chrome.runtime.getURL('popup.html')) {
       sendResponse({ ok: false, error: 'Sign-in must be started from the extension popup.' });
@@ -314,7 +423,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ ok: false, error: 'Request did not originate from the configured portal.' });
       return false;
     }
-    getAccessToken().then(
+    chrome.storage.local.get(TELEMETRY_CONSENT_KEY).then((consent) => {
+      if (consent[TELEMETRY_CONSENT_KEY] !== true) {
+        throw new Error('Opt in to telemetry from the portal before collecting activity.');
+      }
+      return getAccessToken();
+    }).then(
       () => sendResponse({ ok: true }),
       (error) => {
         sendResponse({
@@ -353,7 +467,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     forwardTelemetry(message.payload).then(
-      () => sendResponse({ ok: true }),
+      (result) => sendResponse({ ok: true, ...result }),
       (error) => {
         console.error('Unable to send behavioral telemetry to the configured API.', error);
         sendResponse({

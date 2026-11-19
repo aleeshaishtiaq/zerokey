@@ -64,6 +64,7 @@ class KeyboardFeatures(FeatureModel):
 
 class TelemetryPayload(FeatureModel):
     collection_version: Literal[2]
+    user_id: str | None = None
     device_id: str = Field(pattern=r"^[a-f0-9]{64}$")
     session_id: UUID
     timestamp: datetime
@@ -82,11 +83,14 @@ class TelemetryPayload(FeatureModel):
 @router.post(
     "/telemetry",
     status_code=201,
-    dependencies=[Depends(require_authorized_user)],
 )
-def receive_telemetry(payload: TelemetryPayload) -> dict[str, str]:
+def receive_telemetry(
+    payload: TelemetryPayload,
+    user_id: str = Depends(require_authorized_user),
+) -> dict[str, str]:
     record: dict[str, object] = {
         **payload.model_dump(mode="json"),
+        "user_id": user_id,
         "timestamp": payload.timestamp.astimezone(timezone.utc).isoformat(),
     }
 

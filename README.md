@@ -17,18 +17,37 @@ with at least one file exist. Build, lint, or test failures fail the workflow.
 
 To verify a run, push a commit to `main` or `develop` or open a pull request
 targeting one of those branches, then check the repository's **Actions** tab
-for a green CI run. CI does not publish an artifact or deploy the application.
+for a green CI run. The separate CD workflow deploys only the FastAPI API to
+Vercel after a successful `develop` push; it does not deploy the enterprise
+portal.
+
+## Enterprise portal Vercel deployment
+
+The enterprise portal is `frontend/`, not the project currently served at
+`https://zerokey.vercel.app`. That URL redirects to
+`https://zerokey.dippan.com.np/`, an unrelated encrypted-messaging site, so the
+enterprise portal is not verified as deployed on Vercel.
+
+Create a separate Vercel project for this portal with `frontend/` as its root
+directory, the Vite framework preset, `npm ci` as the install command,
+`npm run build` as the build command, and `dist` as the output directory.
+`frontend/vercel.json` provides the SPA fallback for client-side routes. Set
+`VITE_AUTH0_DOMAIN`, `VITE_AUTH0_CLIENT_ID`, `VITE_AUTH0_AUDIENCE`, and
+`VITE_API_URL` in the Vercel project before enabling sign-in. Do not reuse the
+existing `zerokey.vercel.app` alias for this unrelated project.
+
+The API also needs a production URL and approved Auth0 subject allowlist before
+the portal can collect live telemetry.
 
 ## Staging authentication and deployment status
 
-The code supports Auth0 authentication, but no Auth0 tenant/application, approved
-users, or Render services have been configured. Access to telemetry data fails
-closed until the API has an Auth0 domain, API audience, and at least one
-team-approved Auth0 subject ID in `AUTH0_ALLOWED_SUBJECTS`. The frontends check
-authorization through the API; the API independently verifies the signed
-access token and enforces its subject allowlist. No approved subject IDs are
-embedded in public frontend bundles. Do not enable public registration or add
-users until the team has approved their identities.
+Access to telemetry data fails closed until the API has an Auth0 domain, API
+audience, and at least one team-approved Auth0 subject ID in
+`AUTH0_ALLOWED_SUBJECTS`. The frontends check authorization through the API;
+the API independently verifies the signed access token and enforces its
+subject allowlist. No approved subject IDs are embedded in public frontend
+bundles. Do not enable public registration or add users until the team has
+approved their identities.
 
 Use the Auth0 **default tenant domain** (no custom Auth0 domain). The intended
 Auth0 setup is:
@@ -39,8 +58,8 @@ Auth0 setup is:
    separate Native Application for the Chromium extension. Do not create or add
    user accounts as part of repository setup.
 3. Disable public sign-ups on the Auth0 database connection. Add only the
-   approved callback URLs/origins after Render has assigned the static sites
-   and the installed extension has a stable ID.
+   approved callback URLs/origins after Vercel has assigned the portal URL,
+   the API URL is ready, and the installed extension has a stable ID.
 4. Configure the exact approved Auth0 `sub` values in the API environment
    allowlist. An empty allowlist deliberately denies all authenticated data
    access.
@@ -49,7 +68,7 @@ Auth0 callback and origin settings required later:
 
 | Auth0 setting | Value to add after service setup |
 |---|---|
-| SPA Allowed Callback URLs | `https://<portal-service>.onrender.com/`, `https://<dashboard-service>.onrender.com/`; for local development, `http://localhost:5500/` and `http://localhost:5173/` |
+| SPA Allowed Callback URLs | `https://<enterprise-portal>.vercel.app/`, `https://<dashboard-service>.onrender.com/`; for local development, `http://127.0.0.1:5500/`, `http://localhost:5500/`, and `http://localhost:5173/` |
 | SPA Allowed Logout URLs | Both static-site URLs above |
 | SPA Allowed Web Origins | Both static-site origins, without trailing slashes; add the two local origins when using localhost |
 | Native Allowed Callback URLs | `chrome.identity.getRedirectURL()` for the installed extension, typically `https://<extension-id>.chromiumapp.org/` |
@@ -64,23 +83,24 @@ secrets. Required environment names:
 | FastAPI | `AUTH0_DOMAIN`, `AUTH0_AUDIENCE`, `AUTH0_ALLOWED_SUBJECTS`, `CORS_ALLOWED_ORIGINS`, `TELEMETRY_LOG_PATH`; Render supplies `PORT` |
 | Portal static-site build | `VITE_AUTH0_DOMAIN`, `VITE_AUTH0_CLIENT_ID`, `VITE_AUTH0_AUDIENCE`, `VITE_API_URL` |
 | Dashboard static-site build | The same four `VITE_*` settings as the portal |
-| Extension | `auth0Domain`, `auth0ClientId`, `auth0Audience`, `apiOrigin`, and `portalOrigin` in `extension/config.js`; the extension requests optional permissions for only those configured origins |
+| Extension | `auth0Domain`, `auth0ClientId`, `auth0Audience`, `apiOrigin`, and `portalOrigin` in `extension/config.js`; optional portal/API permissions are limited to those configured origins, while the separate ipify host permission is required and lookup remains off until explicitly enabled |
 
 Do not place secrets, real telemetry logs, or approved user lists in the
-repository. The API allowlist is set in Render environment configuration and
-is never embedded in frontend bundles. Keep the local example files empty
-until Auth0 settings and identities are approved.
+repository. Public SPA Auth0 settings may appear in the frontend example file;
+the API allowlist belongs only in ignored local or server-side environment
+configuration and is never embedded in frontend bundles.
 
-The intended Render layout is a static portal (`frontend/dist`), a static
-dashboard (`dashboard/dist`), and a FastAPI Web Service. The API writes JSONL
-under `TELEMETRY_LOG_PATH`, which must be on a persistent disk mounted at
-`/var/data`; set the path to `/var/data/telemetry_log.jsonl`. Render's `PORT`
-is supplied by the platform. The API start command is
+The intended production layout is the portal on Vercel, a static dashboard
+(`dashboard/dist`) on Render, and a FastAPI Web Service on Render. The API
+writes JSONL under `TELEMETRY_LOG_PATH`, which must be on a persistent disk
+mounted at `/var/data`; set the path to `/var/data/telemetry_log.jsonl`.
+Vercel serverless filesystems are not a durable telemetry store. Render's
+`PORT` is supplied by the platform. The API start command is
 `python -m uvicorn src.api.main:app --host 0.0.0.0 --port $PORT`, with
 `/api/health` as its health-check path. Both static sites use `npm ci &&
 npm run build` and publish their component's `dist` directory. The API needs a
-paid Web Service and persistent disk for this durable-storage design. **No
-resources have been provisioned, and live deployment is not configured.**
+paid Web Service and persistent disk for this durable-storage design. **The
+enterprise portal and API do not yet have a verified production deployment.**
 
 Once services are created, link each service to `develop` and set Render
 **Auto-Deploy** to **After CI Checks Pass**. Render then waits for GitHub checks
@@ -96,10 +116,12 @@ The standalone Chromium extension collects behavior only on the explicitly
 allowed local portal origins `http://localhost:5500` and
 `http://127.0.0.1:5500`. Although Chromium's static match patterns cannot
 restrict a port, the content script and service worker enforce these exact
-origins. For staging, set the exact Render portal and API origins in
+origins. For staging, set the exact Vercel portal and API origins in
 `extension/config.js`; the extension requests runtime host permission only for
 those configured origins and dynamically registers its content script only on
-the configured portal.
+the configured portal. The separate `api.ipify.org` host permission is used
+only when public-IP lookup is explicitly enabled in the popup and telemetry
+consent is active.
 
 The extension records nothing until mouse or keyboard activity occurs and sends
 15-second feature summaries only for windows containing activity. It does not
@@ -117,27 +139,41 @@ the backend dependencies:
 py -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
-$env:AUTH0_DOMAIN = ""
-$env:AUTH0_AUDIENCE = ""
-$env:AUTH0_ALLOWED_SUBJECTS = ""
-$env:CORS_ALLOWED_ORIGINS = ""
-python -m uvicorn src.api.main:app --reload --host 127.0.0.1 --port 8765
+Copy-Item .env.example .env
+.\scripts\run_local_api.ps1
 ```
 
-Local API configuration is supplied through PowerShell environment variables.
-Set `AUTH0_DOMAIN`, `AUTH0_AUDIENCE`, `AUTH0_ALLOWED_SUBJECTS`, and
-`CORS_ALLOWED_ORIGINS` in that terminal before starting Uvicorn. Keep
-`AUTH0_ALLOWED_SUBJECTS` empty until the team approves identities; with it
-empty, telemetry write/read requests deliberately return HTTP 503. The
-`/api/health` route remains available. The Vite apps read their settings from
-`frontend/.env.local` and `dashboard/.env.local`; copy each component's
-`.env.example` and keep all approved-subject values out of Git.
+The PowerShell launcher loads the ignored repository-root `.env` and starts
+Uvicorn on `127.0.0.1:8765` with reload enabled. The API's Auth0 domain and
+audience must match the portal's `VITE_AUTH0_DOMAIN` and
+`VITE_AUTH0_AUDIENCE`. The configured audience is the custom ZeroKey API
+identifier supplied for the selected Auth0 tenant; do not replace it with the
+Auth0 Management API audience (`https://<tenant>/api/v2/`). Keep
+`AUTH0_ALLOWED_SUBJECTS` empty until identities are explicitly approved;
+protected data endpoints then return HTTP 503 while `/api/health` remains
+available.
 
-For local Auth0 testing later, add `http://localhost:5500/` and
-`http://localhost:5173/` to the SPA callback/logout settings and their origins
-to Allowed Web Origins. The extension's exact `chrome-extension://` origin
-must also be added to `CORS_ALLOWED_ORIGINS` after the unpacked extension ID is
-known.
+Vite reads `frontend/.env.local`, not `.env.example`. Copy the example once if
+the local file is absent, then restart Vite after changing its values:
+
+```powershell
+if (-not (Test-Path frontend/.env.local)) {
+    Copy-Item frontend/.env.example frontend/.env.local
+}
+npm --prefix frontend run dev
+```
+
+The local example uses the Auth0 client ID and domain supplied for this
+workspace. The dashboard reads its own `dashboard/.env.local`; keep all
+approved-subject values out of frontend files and Git.
+
+The ZeroKey Portal SPA is configured with the `dev-g642lc64chdvl4p4`
+Auth0 tenant and `https://zerokey-fyp-api` audience. The extension config uses
+the same tenant, client ID, and audience. Its standalone popup login uses
+`chrome.identity.getRedirectURL()`; that exact URL must be added to the
+Auth0 application's Allowed Callback URLs if standalone extension sign-in is
+used. The extension's exact `chrome-extension://` origin must also be added
+to `CORS_ALLOWED_ORIGINS` after the unpacked extension ID is known.
 
 The API exposes public `GET /api/health` and Auth0-protected
 `GET /api/auth/check`, `POST /api/telemetry`, and
@@ -146,14 +182,17 @@ tokens and require an exact allowlisted subject. Until
 `AUTH0_DOMAIN`, `AUTH0_AUDIENCE`, and `AUTH0_ALLOWED_SUBJECTS` are configured,
 data access is denied. CORS is limited to the explicit configured origins (or
 localhost development defaults) and does not replace token authentication.
-The extension looks up the visitor's public IP using ipify's free
+The extension can look up the visitor's public IP using ipify's free
 `https://api.ipify.org?format=json`
-endpoint only after a behavioral activity window is ready to send, and caches
-the result in session-only extension storage for 15 minutes. ipify therefore
-receives the visitor's public IP; this is a public egress address, which can
-belong to a VPN, proxy, or shared network and is not necessarily a unique user
-or their local network address. If the lookup fails, feature data is still
-saved with a `null` public IP.
+endpoint only after telemetry consent and when a behavioral activity window is
+ready to send. The extension has a required, narrowly scoped `api.ipify.org`
+host permission, but lookup remains off until explicitly enabled in the popup.
+It caches a successful result in session-only extension storage for 15 minutes;
+turning lookup off clears that cache. ipify receives the visitor's public IP,
+which is a public egress address that can belong to a VPN, proxy, or shared
+network and is not necessarily a unique user or their local network address.
+If lookup is disabled or fails, feature data is still saved with a `null`
+public IP.
 
 ### Run the portal and dashboard
 
@@ -185,17 +224,23 @@ the API has no approved subject allowlist.
    unpacked**, and choose the repository's `extension/` folder. If the
    extension is already installed, click its **Reload** button after changing
    extension files.
-2. Keep the FastAPI server running, open the enterprise portal, and sign in
-   with an approved Auth0 identity. Sign in separately from the extension
-   popup. Open **Complaints & requests**, choose **Create ticket**, and type a fictional issue in the
-   **Complaint description** field, or move/click the mouse. After an active
-   15-second window, feature values are sent to the API using the extension's
-   Auth0 token. The complaint form shows collector status. Typed characters
-   are never stored or sent.
-3. The extension popup reports whether the configured API is reachable. The
+2. In the extension popup, enable the configured portal once and grant the
+   exact portal/API permissions. Reload the portal, sign in with an approved
+   Auth0 identity, and choose **Allow telemetry** if you consent. The
+   extension then receives the portal's short-lived API token, creates its
+   SHA-256 device ID, and starts collecting without a second sign-in.
+3. Use **Task 0 · Transcription** and **Task 1 · Survey** for typing practice.
+   Select the authorized Session 0 PDF locally to read it while typing in
+   Task 0. No exact-match check is performed. Task 1 displays the HTML
+   questions and survey image. Task answers are practice-only: they are neither
+   downloaded nor uploaded. With telemetry consent, only aggregated keyboard
+   and mouse features are sent to the API. Then spend the planned 10 minutes navigating
+   **Customers** and **Complaints & requests** and creating fictional tickets.
+   Only opted-in aggregate features are sent as telemetry.
+4. The extension popup reports whether the configured API is reachable. The
    dashboard's **Telemetry** page refreshes every five seconds; use its
    **Refresh** button to fetch immediately.
-4. The dashboard retrieves recent records with its Auth0 access token.
+5. The dashboard retrieves recent records with its Auth0 access token.
 
 ### Where telemetry is stored and troubleshooting
 
@@ -211,23 +256,23 @@ The log is ignored by Git.
 
 If no new row appears, check that the portal URL is exactly
 `http://localhost:5500` or `http://127.0.0.1:5500`, all Auth0 settings and
-allowlists match, the extension is signed in, and the API is running. Reload
-the extension from `chrome://extensions` and reload the portal tab. Then open
+allowlists match, the extension has permission for the configured portal, and
+the API is running. Reload the extension from `chrome://extensions` and reload
+the portal tab. Then open
 **Complaints & requests** > **Create ticket**, type a few
 fictional characters in **Complaint description**, then wait up to 15 seconds.
 Check `http://127.0.0.1:8765/api/health` for backend status. Recent-record
-requests require an approved Auth0 bearer token. A blocked
-ipify lookup no longer prevents behavior from being saved; that record's
-`public_ip_address` will be `null`.
+requests require an approved Auth0 bearer token.
 If the extension reports HTTP 422, reload the extension and portal after
 updating them; the collector status now includes the API's rejected field and
 validation message.
 
-Each record contains a SHA-256 device identifier, a per-tab session UUID
-(renewed after 30 minutes of inactivity), an ISO timestamp, a public IP from
-ipify when available, and only the shortlisted mouse and keyboard aggregates.
-The extension emits aggregate features rather than transmitting typed text,
-raw event rows, coordinates, or key values.
+Each record contains the server-verified Auth0 subject as `user_id`, a SHA-256
+device identifier, a per-tab session UUID (renewed after 30 minutes of
+inactivity), an ISO timestamp, and only shortlisted mouse and keyboard
+aggregates. The extension emits aggregate features rather than transmitting
+typed text, raw event rows, coordinates, or key values. If public-IP lookup is
+enabled, it also sends the public egress IP with the feature summary.
 
 ## Research data processing pipeline
 
@@ -282,7 +327,7 @@ Install development dependencies and run the default session:
 
 ```powershell
 python -m pip install -r requirements-dev.txt
-python -m src.data_pipeline.pipeline --session 0
+python -m src.data_pipeline.pipeline run --session 0
 ```
 
 The default command also works without `--session`. To process another
@@ -296,6 +341,7 @@ Session 0 writes:
 ```text
 data/processed/keystroke_session0_processed.jsonl
 data/processed/mouse_session0_processed.jsonl
+data/processed/features_session0_processed.jsonl
 ```
 
 Each line is one validated JSON object preserving the dataset, subject, session,
@@ -310,6 +356,74 @@ events on separate source lines remain. Invalid rows, unreadable files, and
 unexpected formats are skipped with a warning and counted in the summary.
 Non-finite numeric values cannot be written because JSON serialization uses
 `allow_nan=False`; malformed records are never included in valid output.
+Processed files are ignored by Git and generated locally by the pipeline.
+Missing or removed UB subjects are skipped and never renumbered. Feature
+records use the original three-digit subject ID as `user_id` and a deterministic
+SHA-256 device ID derived from that subject and keyboard code. The UB feature
+pipeline preserves nullable feature values as JSON `null` in each output row;
+it does not drop rows for null feature values or impute them. There is currently
+no separate model-training/imputation stage in this repository.
+
+After collecting live records, verify their model/key schemas and compare the
+UB feature summary with the live telemetry log before model training:
+
+```powershell
+python -m src.data_pipeline.sanity_check
+```
+
+The report validates each JSONL record against its own model, checks exact
+record and feature keys, reports required/nullability differences, then checks
+shared feature distributions. It exits nonzero on schema mismatches or
+distribution differences. Some top-level metadata keys intentionally belong to
+one record format only; those are listed separately from feature-key
+differences. In particular, UB uses
+`mouse_features.click_interval_ticks_mean`, with a null/unverified mouse
+timebase in the current processed data, while live telemetry uses
+`mouse_features.click_interval_ms_mean` in milliseconds (`performance.now()`).
+The click intervals therefore cannot be treated as aligned or converted without
+establishing the UB mouse timestamp rate. A distribution screen pass is not
+proof of statistical equivalence.
+
+To produce records with the UB feature-summary key structure, run the explicit
+converter below. Its default assumes 1,000 UB mouse ticks per second (one
+millisecond per tick); this is a conversion assumption, not a verified UB
+dataset timebase:
+
+```powershell
+python -m src.data_pipeline.align_live
+```
+
+By default it reads the live telemetry log and processed UB feature files, then
+writes `data/processed/telemetry_log_ub_aligned.jsonl`. It reserves subject IDs
+already present in UB files and deterministically maps live user/session/device
+identities into the UB field ranges. `subject_id`, `session`, `keyboard_code`,
+`task_id`, `subset`, and `original_filename` are derived surrogates, not actual
+UB experiment labels. The mapping is repeatable for the same input batch and UB
+files; it is not evidence that the underlying users, sessions, tasks, or
+conditions are equivalent. The converter refuses mappings that exceed UB's
+identifier ranges and will not replace an existing output unless passed
+`--overwrite`. Schema validity alone does not establish scientific suitability
+for model training.
+
+To summarize live feature nulls, write the live and UB device mapping files,
+and verify feature names, dtypes, nullability, and column order (excluding
+`device_id`), run:
+
+```powershell
+python -m src.data_pipeline.device_mapping
+```
+
+The command reads the live telemetry log and processed UB feature JSONL. It
+validates and aligns live records first, including the configured click-interval
+conversion, then writes `data/processed/live_device_mapping.jsonl` and
+`data/processed/ub_device_mapping.jsonl`. Live mappings retain captured
+`user_id`/`device_id` pairs. UB mappings use a stable SHA-256-derived synthetic
+device ID per `user_id`. The null report distinguishes nulls from absent source
+keys; legitimate nulls remain null rather than being imputed, and live rows are
+not dropped for nullable feature values, matching the UB preprocessor. The
+report also shows how many UB and live rows contain any null feature. Invalid
+required fields fail validation. These local data files are not replaced unless
+`--overwrite` is passed.
 
 Illustrative input and output records:
 

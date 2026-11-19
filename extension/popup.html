@@ -23,14 +23,13 @@
   </head>
   <body>
     <h1>ZeroKey Behavioral Telemetry</h1>
-    <p>Collects shortlisted behavior features only from the configured portal after user activity.</p>
+    <p>Connect the configured portal once. Sign in there with your normal Auth0 account and choose whether to opt in.</p>
     <p id="status" role="status">Checking local API…</p>
-    <p class="muted">Only feature summaries, a hashed device ID, and a session ID are sent. Typed text is not collected.</p>
-    <button id="sign-in" type="button">Sign in to staging</button>
+    <p class="muted">After consent, aggregate behavior features, an SHA-256 device ID, and your Auth0 user ID are sent to the configured API. If enabled, ipify receives a request to determine your public IP, which is also sent to the API. Typed text is not collected.</p>
+    <button id="enable-portal" type="button">Enable configured portal</button>
+    <button id="enable-public-ip" type="button">Enable public IP lookup (ipify)</button>
     <button id="sign-out" type="button">Sign out</button>
     <p id="auth-status" class="muted" role="status"></p>
-    <p class="muted">Auth0 callback URL for this installed extension:</p>
-    <p id="redirect-uri" class="muted callback"></p>
     <script src="config.js"></script>
     <script src="popup.js"></script>
   </body>

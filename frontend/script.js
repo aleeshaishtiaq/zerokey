@@ -1,4 +1,11 @@
-import { beginPortalSignIn, initializePortalAuth, signOutPortal } from './auth.js';
+import {
+  beginPortalSignIn,
+  disablePortalTelemetry,
+  enablePortalTelemetry,
+  initializePortalAuth,
+  signOutPortal,
+} from './auth.js';
+import { initializeTaskPages } from './tasks.js';
 
 /* Local-only demo data. Every record below is fictional. */
 const customers = [
@@ -24,6 +31,7 @@ let tickets = [
 ];
 
 const profile = {name:'Amina Shah',employeeId:'TCL-EMP-1048',department:'Customer Operations',designation:'Operations Manager',email:'amina.shah@tclgroup.com',phone:'+92 300 555 0148'};
+const TELEMETRY_CONSENT_KEY = 'zerokeyTelemetryConsent';
 const suggestions = ['Move the router to a central location','Reduce physical obstructions around the access point','Select a less congested Wi-Fi channel','Move closer to the access point for stronger signal','Review connected devices and disconnect unused devices'];
 const $ = (selector, root=document) => root.querySelector(selector);
 const $$ = (selector, root=document) => [...root.querySelectorAll(selector)];
@@ -259,8 +267,45 @@ $('#login-form').addEventListener('submit',event=>{
   });
 });
 $('#logout-button').addEventListener('click',()=>{closeDialog();void signOutPortal();});
+$('#telemetry-accept').addEventListener('click',()=>{
+  localStorage.setItem(TELEMETRY_CONSENT_KEY,'granted');
+  $('#telemetry-consent-dialog').close();
+  void enablePortalTelemetry().then(
+    ()=>showToast('Consent saved. The extension can now collect aggregate behavior features.'),
+    error=>showToast(error instanceof Error?error.message:'Could not enable portal telemetry.','error'),
+  );
+});
+$('#telemetry-decline').addEventListener('click',()=>{
+  localStorage.setItem(TELEMETRY_CONSENT_KEY,'declined');
+  $('#telemetry-consent-dialog').close();
+  disablePortalTelemetry();
+  showToast('Continuing without behavioral telemetry.','warning');
+});
+$('#telemetry-consent-button').addEventListener('click',()=>{
+  $('#profile-menu').classList.add('is-hidden');
+  if(localStorage.getItem(TELEMETRY_CONSENT_KEY)==='granted'){
+    if(window.confirm('Stop behavioral telemetry collection on this portal?')){
+      localStorage.setItem(TELEMETRY_CONSENT_KEY,'declined');
+      disablePortalTelemetry();
+      showToast('Telemetry consent withdrawn.');
+    }
+    return;
+  }
+  $('#telemetry-consent-dialog').showModal();
+});
 void initializePortalAuth(
-  ()=>{$('#login-screen').classList.add('is-hidden');$('#app-shell').classList.remove('is-hidden');renderOverview();renderCustomers();renderTickets();renderBilling();renderSuggestions();},
+  ()=>{
+    $('#login-screen').classList.add('is-hidden');
+    $('#app-shell').classList.remove('is-hidden');
+    renderOverview();
+    renderCustomers();
+    renderTickets();
+    renderBilling();
+    renderSuggestions();
+    if(!localStorage.getItem(TELEMETRY_CONSENT_KEY)){
+      $('#telemetry-consent-dialog').showModal();
+    }
+  },
   message=>{$('#auth-status').textContent=message;},
 );
 $$('.nav-link[data-section]').forEach(link=>link.addEventListener('click',()=>switchSection(link.dataset.section)));
@@ -295,3 +340,4 @@ document.addEventListener('click',event=>{
 });
 
 renderOverview();
+initializeTaskPages();

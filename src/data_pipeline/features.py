@@ -9,22 +9,22 @@ from typing import Iterable
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .parsers import NormalizedEvent
+from .parsers import NormalizedEvent, dataset_device_id
 
 
 class KeyboardFeatureSummary(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
-    dwell_time_ticks_mean: float | None = Field(default=None, ge=0)
-    dwell_time_ticks_stddev: float | None = Field(default=None, ge=0)
-    press_to_press_ticks_mean: float | None = Field(default=None, ge=0)
-    press_to_press_ticks_stddev: float | None = Field(default=None, ge=0)
-    release_to_press_ticks_mean: float | None = Field(default=None, ge=0)
-    release_to_press_ticks_stddev: float | None = Field(default=None, ge=0)
+    dwell_time_ms_mean: float | None = Field(default=None, ge=0)
+    dwell_time_ms_stddev: float | None = Field(default=None, ge=0)
+    pp_latency_ms_mean: float | None = Field(default=None, ge=0)
+    pp_latency_ms_stddev: float | None = Field(default=None, ge=0)
+    rp_latency_ms_mean: float | None = Field(default=None, ge=0)
+    rp_latency_ms_stddev: float | None = Field(default=None, ge=0)
     typing_rate_keystrokes_per_minute: float | None = Field(default=None, ge=0)
     pause_count: int = Field(ge=0)
-    pause_duration_ticks_mean: float | None = Field(default=None, ge=0)
-    inter_key_interval_ticks_stddev: float | None = Field(default=None, ge=0)
+    pause_duration_ms_mean: float | None = Field(default=None, ge=0)
+    inter_key_interval_ms_stddev: float | None = Field(default=None, ge=0)
     rollover_ratio: float | None = Field(default=None, ge=0, le=1)
 
 
@@ -44,13 +44,17 @@ class BehavioralFeatureSummary(BaseModel):
 
     dataset: str = "behavioral_feature_window"
     subject_id: str
+    user_id: str
+    device_id: str = Field(pattern=r"^[a-f0-9]{64}$")
     session: int
     keyboard_code: int
     task_id: int
     subset: str
     original_filename: str
-    timestamp_unit: str = "source_ticks"
-    ticks_per_second: float | None = Field(default=None, gt=0)
+    keyboard_timestamp_unit: str = "milliseconds"
+    keyboard_ticks_per_second: float = Field(default=1000, gt=0)
+    mouse_timestamp_unit: str = "unverified"
+    mouse_ticks_per_second: float | None = Field(default=None, gt=0)
     keyboard_features: KeyboardFeatureSummary
     mouse_features: MouseFeatureSummary
 
@@ -59,6 +63,12 @@ def _summary(values: list[float]) -> tuple[float | None, float | None]:
     if not values:
         return None, None
     return mean(values), pstdev(values) if len(values) > 1 else 0.0
+
+
+def _milliseconds(value: float | None, factor: float | None) -> float | None:
+    if value is None or factor is None:
+        return None
+    return value * factor
 
 
 def _positive_deltas(values: Iterable[int]) -> list[float]:
@@ -71,9 +81,9 @@ def extract_keyboard_features(
     records: Iterable[NormalizedEvent],
     *,
     pause_threshold_ticks: int = 500,
-    ticks_per_second: float | None = None,
+    ticks_per_second: float | None = 1000,
 ) -> KeyboardFeatureSummary:
-    """Summarize keyboard events without converting their source timestamps."""
+    """Summarize keyboard events and report timing values in milliseconds."""
 
     ordered = sorted(
         (record for record in records if record.dataset == "keystroke"),
@@ -114,6 +124,7 @@ def extract_keyboard_features(
             held_keys.discard(record.key)
             last_release = record.timestamp
 
+    milliseconds_per_tick = 1000 / ticks_per_second if ticks_per_second else None
     dwell_mean, dwell_stddev = _summary(dwell_times)
     pp_mean, pp_stddev = _summary(press_to_press)
     rp_mean, rp_stddev = _summary(release_to_press)
@@ -128,16 +139,16 @@ def extract_keyboard_features(
             typing_rate = len(key_downs) / (active_duration_ticks / ticks_per_second) * 60
 
     return KeyboardFeatureSummary(
-        dwell_time_ticks_mean=dwell_mean,
-        dwell_time_ticks_stddev=dwell_stddev,
-        press_to_press_ticks_mean=pp_mean,
-        press_to_press_ticks_stddev=pp_stddev,
-        release_to_press_ticks_mean=rp_mean,
-        release_to_press_ticks_stddev=rp_stddev,
+        dwell_time_ms_mean=_milliseconds(dwell_mean, milliseconds_per_tick),
+        dwell_time_ms_stddev=_milliseconds(dwell_stddev, milliseconds_per_tick),
+        pp_latency_ms_mean=_milliseconds(pp_mean, milliseconds_per_tick),
+        pp_latency_ms_stddev=_milliseconds(pp_stddev, milliseconds_per_tick),
+        rp_latency_ms_mean=_milliseconds(rp_mean, milliseconds_per_tick),
+        rp_latency_ms_stddev=_milliseconds(rp_stddev, milliseconds_per_tick),
         typing_rate_keystrokes_per_minute=typing_rate,
         pause_count=len(pause_intervals),
-        pause_duration_ticks_mean=pause_mean,
-        inter_key_interval_ticks_stddev=inter_key_stddev,
+        pause_duration_ms_mean=_milliseconds(pause_mean, milliseconds_per_tick),
+        inter_key_interval_ms_stddev=_milliseconds(inter_key_stddev, milliseconds_per_tick),
         rollover_ratio=rollover_count / len(key_downs) if key_downs else None,
     )
 
@@ -210,6 +221,8 @@ def build_feature_summary(
     records: Iterable[NormalizedEvent],
     *,
     ticks_per_second: float | None = None,
+    keyboard_ticks_per_second: float | None = None,
+    mouse_ticks_per_second: float | None = None,
     pause_threshold_ticks: int = 500,
 ) -> BehavioralFeatureSummary:
     """Build one aligned keyboard/mouse feature record for one source file."""
@@ -236,18 +249,31 @@ def build_feature_summary(
         keyboard_code = reference.keyboard_code
         task_id = reference.task_id
         subset = reference.subset
+    keyboard_rate = (
+        keyboard_ticks_per_second
+        if keyboard_ticks_per_second is not None
+        else ticks_per_second if ticks_per_second is not None else 1000
+    )
+    mouse_rate = (
+        mouse_ticks_per_second
+        if mouse_ticks_per_second is not None
+        else ticks_per_second
+    )
     return BehavioralFeatureSummary(
         subject_id=subject_id,
+        user_id=subject_id,
+        device_id=dataset_device_id(subject_id, keyboard_code),
         session=session,
         keyboard_code=keyboard_code,
         task_id=task_id,
         subset=subset,
         original_filename=first.original_filename,
-        ticks_per_second=ticks_per_second,
+        keyboard_ticks_per_second=keyboard_rate,
+        mouse_ticks_per_second=mouse_rate,
         keyboard_features=extract_keyboard_features(
             grouped,
             pause_threshold_ticks=pause_threshold_ticks,
-            ticks_per_second=ticks_per_second,
+            ticks_per_second=keyboard_rate,
         ),
-        mouse_features=extract_mouse_features(grouped, ticks_per_second=ticks_per_second),
+        mouse_features=extract_mouse_features(grouped, ticks_per_second=mouse_rate),
     )

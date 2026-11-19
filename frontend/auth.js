@@ -9,6 +9,24 @@ const apiBaseUrl = (
 
 let auth0Client;
 
+function sharePortalAccessToken(tokenResult) {
+  if (
+    typeof tokenResult?.access_token !== 'string' ||
+    typeof tokenResult.expires_in !== 'number'
+  ) {
+    throw new Error('Auth0 did not return a usable API access token.');
+  }
+  window.postMessage(
+    {
+      source: 'zerokey-portal',
+      type: 'telemetry-auth',
+      accessToken: tokenResult.access_token,
+      expiresAt: Date.now() + tokenResult.expires_in * 1000,
+    },
+    window.location.origin,
+  );
+}
+
 export async function initializePortalAuth(onAuthorized, setStatus) {
   if (!domain || !clientId || !audience || !apiBaseUrl) {
     setStatus('Staging authentication is not configured. Access is denied.');
@@ -50,15 +68,15 @@ export async function initializePortalAuth(onAuthorized, setStatus) {
 
     setStatus('Checking Auth0 sign-in status…');
     if (!(await auth0Client.isAuthenticated())) {
-      setStatus('Sign in with an identity approved for this staging demo.');
+      setStatus('Sign in with an identity approved for this portal.');
       return;
     }
 
     setStatus('Requesting an access token…');
-    const accessToken = await auth0Client.getTokenSilently();
-    setStatus('Checking authorization with the local API…');
+    const tokenResult = await auth0Client.getTokenSilently({ detailedResponse: true });
+    setStatus('Checking authorization with the configured API…');
     const accessCheck = await fetch(`${apiBaseUrl}/api/auth/check`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
+      headers: { Authorization: `Bearer ${tokenResult.access_token}` },
       signal: AbortSignal.timeout(10_000),
     });
     if (!accessCheck.ok) {
@@ -71,13 +89,16 @@ export async function initializePortalAuth(onAuthorized, setStatus) {
       }
       setStatus(
         detail
-          ? `The staging API denied access (HTTP ${accessCheck.status}): ${detail}`
-          : `The staging API denied access (HTTP ${accessCheck.status}).`,
+          ? `The configured API denied access (HTTP ${accessCheck.status}): ${detail}`
+          : `The configured API denied access (HTTP ${accessCheck.status}).`,
       );
       return;
     }
 
     onAuthorized();
+    if (localStorage.getItem('zerokeyTelemetryConsent') === 'granted') {
+      sharePortalAccessToken(tokenResult);
+    }
   } catch (error) {
     console.error('Auth0 sign-in could not be completed.', error);
     setStatus(
@@ -86,6 +107,21 @@ export async function initializePortalAuth(onAuthorized, setStatus) {
         : 'Sign-in could not be completed. Please try again.',
     );
   }
+}
+
+export async function enablePortalTelemetry() {
+  if (!auth0Client || !(await auth0Client.isAuthenticated())) {
+    throw new Error('Sign in to the portal before enabling telemetry.');
+  }
+  const tokenResult = await auth0Client.getTokenSilently({ detailedResponse: true });
+  sharePortalAccessToken(tokenResult);
+}
+
+export function disablePortalTelemetry() {
+  window.postMessage(
+    { source: 'zerokey-portal', type: 'telemetry-revoke' },
+    window.location.origin,
+  );
 }
 
 export async function beginPortalSignIn() {
