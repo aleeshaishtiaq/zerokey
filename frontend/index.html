@@ -52,6 +52,8 @@
         <button class="nav-link" data-section="network"><svg viewBox="0 0 24 24"><path d="M5 9a11 11 0 0 1 14 0M8 12a6.5 6.5 0 0 1 8 0m-5 4a2.5 2.5 0 0 1 2 0M12 20h.01"/></svg>Network &amp; Wi-Fi</button>
         <button class="nav-link" data-section="tickets"><svg viewBox="0 0 24 24"><path d="M4 5h16v4a3 3 0 0 0 0 6v4H4v-4a3 3 0 0 0 0-6V5Z"/><path d="M13 8v2m0 4v2"/></svg>Complaints &amp; requests<span class="nav-count" id="ticket-nav-count">04</span></button>
         <button class="nav-link" data-section="billing"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M7 15h4"/></svg>Billing</button>
+        <button class="nav-link" data-section="task0">Task 0 · Transcription</button>
+        <button class="nav-link" data-section="task1">Task 1 · Survey</button>
       </nav>
       <div class="sidebar-bottom">
         <div class="side-help"><span class="help-icon">?</span><div><strong>Need a hand?</strong><small>Contact your service desk</small></div><button type="button" aria-label="Contact service desk" id="help-button">↗</button></div>
@@ -69,7 +71,7 @@
           <label class="global-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input id="global-search" type="search" placeholder="Search customers, tickets..." aria-label="Global search"><kbd>Enter</kbd></label>
           <button class="icon-button notification-button" id="notifications-button" type="button" aria-label="Notifications"><svg viewBox="0 0 24 24"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg><span class="notification-dot"></span></button>
           <button class="profile-trigger" id="profile-menu-button" type="button" aria-expanded="false"><span class="avatar avatar-small">AS</span><span class="profile-trigger-copy"><strong id="topbar-employee-name">Amina Shah</strong><small>Operations manager</small></span><span class="chevron">⌄</span></button>
-          <div class="profile-menu is-hidden" id="profile-menu"><button type="button" data-go-profile>View profile</button><button type="button" id="logout-button">Sign out</button></div>
+          <div class="profile-menu is-hidden" id="profile-menu"><button type="button" data-go-profile>View profile</button><button type="button" id="telemetry-consent-button">Telemetry consent</button><button type="button" id="logout-button">Sign out</button></div>
         </div>
       </header>
       <div class="content-area">
@@ -133,11 +135,60 @@
           <div class="profile-layout"><article class="profile-hero"><div class="avatar avatar-large">AS</div><span class="employee-active"><i></i> Active employee</span><h2 id="profile-name">Amina Shah</h2><p id="profile-designation">Operations Manager</p><span class="role-chip">ENTERPRISE OPERATIONS</span><div class="profile-id"><span>EMPLOYEE ID</span><strong id="profile-id">TCL-EMP-1048</strong></div></article><article class="panel profile-details"><div class="panel-heading"><div><h2>Profile details</h2><p>Employee information · Demo only</p></div><span class="simulated-tag">FICTIONAL</span></div><div class="profile-detail-grid"><div><span>Department</span><strong id="profile-department">Customer Operations</strong></div><div><span>Designation</span><strong id="profile-designation-detail">Operations Manager</strong></div><div><span>Work email</span><strong id="profile-email">amina.shah@tclgroup.com</strong></div><div><span>Contact number</span><strong id="profile-phone">+92 300 555 0148</strong></div><div><span>Assigned role</span><strong>Enterprise Operations Lead</strong></div><div><span>Office location</span><strong>Islamabad · Demo HQ</strong></div></div></article></div>
         </section>
 
+        <section class="view-section" id="section-task0" data-title="Task 0 · Transcription">
+          <div class="page-heading"><div><span class="eyebrow">BEHAVIORAL STUDY · TASK 0</span><h1>Transcription</h1><p>Read the Session 0 script and type it in the response area.</p></div></div>
+          <div class="task-layout">
+            <article class="panel task-document"><div class="panel-heading"><div><h2>Session 0 script</h2><p>Select the Session 0 PDF to read it while you type.</p></div></div><label class="task-file-picker">Open Session 0 PDF<input id="task0-pdf-input" type="file" accept="application/pdf,.pdf"></label><p class="task-document-status" id="task0-pdf-status" role="status">No PDF selected. Choose the Session 0 script from your computer.</p><iframe class="task-pdf-viewer is-hidden" id="task0-pdf-viewer" title="Session 0 transcription script"></iframe></article>
+            <article class="panel task-response"><div class="panel-heading"><div><h2>Your transcription</h2><p>Type the speech in the response area. Your response is not submitted or saved.</p></div></div><form class="task-submit-form"><label for="task0-response">Transcription text</label><textarea id="task0-response" rows="18" autocomplete="off" spellcheck="false" placeholder="Begin typing the speech here…"></textarea><p class="task-private-note">Typed text and the selected PDF stay on this page. With telemetry consent, only aggregated keyboard and mouse features are sent to the backend.</p></form></article>
+          </div>
+        </section>
+
+        <section class="view-section" id="section-task1" data-title="Task 1 · Survey">
+          <div class="page-heading"><div><span class="eyebrow">BEHAVIORAL STUDY · TASK 1</span><h1>Survey and mouse practice</h1><p>View the Session 1 survey, type free-text answers, and move the pointer in the practice area.</p></div></div>
+          <div class="task-layout task-layout-survey">
+            <article class="panel task-document">
+              <div class="panel-heading"><div><h2>Session One questions</h2><p>Read each prompt and describe your own experience.</p></div></div>
+              <div class="survey-question-list">
+                <section class="survey-question" aria-labelledby="survey-question-1">
+                  <h3 id="survey-question-1">1. University experience</h3>
+                  <p>Describe why you chose to study/work at UB. Are you satisfied with your decision to come to UB? In your experience, what do you think is the most important quality in a university? Would you recommend UB to high school graduates/employees, and why?</p>
+                </section>
+                <section class="survey-question" aria-labelledby="survey-question-2">
+                  <h3 id="survey-question-2">2. Spare-time activities</h3>
+                  <p>What activities do you like to do in your spare time? Do you like art, music, or theatre? Describe the type of outdoor activities you like to do. What activities do you like to do in your current city, Buffalo, NY? Do you think there is a good balance of indoor and outdoor activities in your current city, Buffalo, NY? If you could change anything about your current city to increase social activities, what would you do?</p>
+                </section>
+                <section class="survey-question" aria-labelledby="survey-question-3">
+                  <h3 id="survey-question-3">3. Describe the picture</h3>
+                  <p>Describe what you see in this picture. What does the scene look like? What are the people doing?</p>
+                  <img class="survey-scene" src="/assets/session1-survey-scene.png" alt="Illustration of people participating in water and waterfront activities">
+                </section>
+              </div>
+            </article>
+            <article class="panel task-response">
+              <div class="panel-heading"><div><h2>Survey practice</h2><p>Type answers to practice. Your response text is not submitted or saved.</p></div></div>
+              <form class="task-submit-form">
+                <label for="task1-response-1">Answer to question 1</label>
+                <textarea id="task1-response-1" rows="5" autocomplete="off" placeholder="Type your answer here…"></textarea>
+                <label for="task1-response-2">Answer to question 2</label>
+                <textarea id="task1-response-2" rows="5" autocomplete="off" placeholder="Type your answer here…"></textarea>
+                <label for="task1-response-3">Answer to question 3</label>
+                <textarea id="task1-response-3" rows="5" autocomplete="off" placeholder="Describe the scene here…"></textarea>
+                <label for="survey-mouse-practice">Mouse movement practice</label>
+                <canvas id="survey-mouse-practice" width="640" height="220" aria-label="Move and click the pointer in this practice area"></canvas>
+                <p class="task-private-note">Typed answers and drawings are not submitted or uploaded. With telemetry consent, only aggregated keyboard and mouse features are sent to the backend.</p>
+              </form>
+            </article>
+          </div>
+        </section>
+
         <footer class="page-footer"><span>Design and Developed By <strong>Digitalization Team</strong></span><span>Demo environment only. All employee, customer, billing, and network records are fictional.</span></footer>
       </div>
     </main>
   </div>
   <dialog class="app-dialog" id="app-dialog" aria-labelledby="dialog-title"><div class="dialog-content" id="dialog-content"></div></dialog>
+  <dialog class="app-dialog telemetry-consent-dialog" id="telemetry-consent-dialog" aria-labelledby="telemetry-consent-heading">
+    <div class="dialog-content"><div class="dialog-heading"><div><h2 id="telemetry-consent-heading">Behavioral telemetry consent</h2><p>Your choice is optional. You can change it at any time from the profile menu.</p></div></div><p>With your permission, ZeroKey collects aggregate keyboard timing and mouse movement/click features, a stable SHA-256 device ID, and your Auth0 user ID. If you separately enable public IP lookup in the extension, ipify receives a request that reveals your public IP, which is also sent to the configured ZeroKey API. It does not collect keystrokes, typed text, survey answers, or drawings.</p><div class="dialog-actions"><button class="button button-outline button-small" id="telemetry-decline" type="button">Continue without telemetry</button><button class="button button-primary button-small" id="telemetry-accept" type="button">Allow telemetry</button></div></div>
+  </dialog>
   <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
 </body>
 </html>

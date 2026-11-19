@@ -1,8 +1,23 @@
 const status = document.getElementById('status');
 const authStatus = document.getElementById('auth-status');
+const publicIpButton = document.getElementById('enable-public-ip');
 const CONFIG = globalThis.ZERO_KEY_CONFIG;
-const redirectUri = chrome.identity.getRedirectURL();
-document.getElementById('redirect-uri').textContent = redirectUri;
+const PUBLIC_IP_ENABLED_KEY = 'public_ip_lookup_enabled';
+const PUBLIC_IP_CACHE_KEYS = ['public_ip_address', 'public_ip_fetched_at'];
+
+function updatePublicIpButton(enabled) {
+  publicIpButton.textContent = enabled
+    ? 'Disable public IP lookup (ipify)'
+    : 'Enable public IP lookup (ipify)';
+}
+
+chrome.storage.local.get(PUBLIC_IP_ENABLED_KEY).then(
+  (settings) => updatePublicIpButton(settings[PUBLIC_IP_ENABLED_KEY] === true),
+  (error) => {
+    console.error('Unable to read the public IP lookup setting.', error);
+    authStatus.textContent = 'Unable to read the public IP lookup setting.';
+  },
+);
 
 fetch(`${CONFIG.apiOrigin.replace(/\/+$/, '')}/api/health`)
   .then((response) => {
@@ -19,37 +34,47 @@ fetch(`${CONFIG.apiOrigin.replace(/\/+$/, '')}/api/health`)
     status.textContent = 'Configured telemetry API is unavailable.';
   });
 
-document.getElementById('sign-in').addEventListener('click', async () => {
+document.getElementById('enable-portal').addEventListener('click', async () => {
   try {
-    if (!/^[A-Za-z0-9.-]+\.auth0\.com$/.test(CONFIG.auth0Domain) ||
-        !CONFIG.auth0ClientId ||
-        !CONFIG.auth0Audience) {
-      throw new Error('Configure the Auth0 tenant, extension client ID, and API audience first.');
+   const apiOrigin = new URL(CONFIG.apiOrigin).origin;
+   const portalOrigin = new URL(CONFIG.portalOrigin).origin;
+   if (!['http:', 'https:'].includes(new URL(CONFIG.portalOrigin).protocol)) {
+     throw new Error('Configure the portal URL before enabling this integration.');
     }
-
-    const origins = [`https://${CONFIG.auth0Domain}/*`];
-    for (const configuredOrigin of [CONFIG.apiOrigin, CONFIG.portalOrigin]) {
-      const parsedOrigin = new URL(configuredOrigin);
-      if (parsedOrigin.protocol === 'https:') {
-        origins.push(`${parsedOrigin.origin}/*`);
-      }
-    }
+   const origins = [`${apiOrigin}/*`, `${portalOrigin}/*`];
     const granted = await chrome.permissions.request({ origins });
     if (!granted) {
-      throw new Error('The required exact portal, API, and Auth0 host permissions were not granted.');
+     throw new Error('The exact configured portal and API permissions were not granted.');
     }
 
-    const result = await chrome.runtime.sendMessage({ type: 'auth-login' });
+   const result = await chrome.runtime.sendMessage({ type: 'portal-enable' });
     if (!result?.ok) {
-      throw new Error(result?.error || 'Auth0 sign-in failed.');
+     throw new Error(result?.error || 'Portal integration could not be enabled.');
     }
-    authStatus.textContent = 'Signed in. Reload the configured portal to enable collection.';
+   authStatus.textContent = 'Portal access enabled. Reload it, sign in with Auth0, and choose whether to opt in.';
   } catch (error) {
-    console.error('Extension sign-in failed.', error);
-    const message = error instanceof Error ? error.message : 'Extension sign-in failed.';
-    authStatus.textContent = message === 'Authorization page could not be loaded.'
-      ? `Auth0 could not complete sign-in. Check that the callback URL above is in the ZeroKey Extension Native app's Allowed Callback URLs, and that the app is authorized for ZeroKey API.`
-      : message;
+   console.error('Portal integration could not be enabled.', error);
+   authStatus.textContent = error instanceof Error ? error.message : 'Portal integration could not be enabled.';
+  }
+});
+
+publicIpButton.addEventListener('click', async () => {
+  try {
+    const settings = await chrome.storage.local.get(PUBLIC_IP_ENABLED_KEY);
+    const enabled = settings[PUBLIC_IP_ENABLED_KEY] !== true;
+    await chrome.storage.local.set({ [PUBLIC_IP_ENABLED_KEY]: enabled });
+    if (!enabled) {
+      await chrome.storage.session.remove(PUBLIC_IP_CACHE_KEYS);
+    }
+    updatePublicIpButton(enabled);
+    authStatus.textContent = enabled
+      ? 'Public IP lookup enabled. ipify will be contacted only when opted-in telemetry is sent.'
+      : 'Public IP lookup disabled. No public IP will be sent.';
+  } catch (error) {
+    console.error('Unable to update the public IP lookup setting.', error);
+    authStatus.textContent = error instanceof Error
+      ? error.message
+      : 'Unable to update the public IP lookup setting.';
   }
 });
 

@@ -118,6 +118,22 @@ def test_pipeline_writes_deterministic_session_zero_jsonl(tmp_path):
     lines = output_path.read_text(encoding="utf-8").splitlines()
     assert len(lines) == 2
     assert all(json.loads(line)["session"] == 0 for line in lines)
+    feature_lines = (
+        output_root / "features_session0_processed.jsonl"
+    ).read_text(encoding="utf-8").splitlines()
+    assert len(feature_lines) == 2
+    feature_record = json.loads(feature_lines[0])
+    mouse_features = feature_record["mouse_features"]
+    assert feature_record["user_id"] == feature_record["subject_id"]
+    assert len(feature_record["device_id"]) == 64
+    assert mouse_features["average_velocity_px_per_second"] is None
+    assert mouse_features["click_interval_ticks_mean"] is None
+
+
+def test_pipeline_cli_accepts_explicit_run_command():
+    from src.data_pipeline.pipeline import build_parser
+
+    assert build_parser().parse_args(["run"]).command == "run"
 
 
 def test_keystroke_readme_filename_metadata_is_extracted(tmp_path):
@@ -163,6 +179,14 @@ def test_mouse_records_include_unique_keystroke_reference_and_raw_timestamp(tmp_
     assert record.keystroke_reference.task_id == 0
     assert record.keystroke_reference.subset == "baseline"
     assert record.keystroke_reference.mapping_basis == "unique_exact_basename_match"
+    assert record.user_id == record.subject_id
+    assert record.device_id == _dataset_device_id("001", 0)
+
+
+def _dataset_device_id(subject_id: str, keyboard_code: int) -> str:
+    import hashlib
+
+    return hashlib.sha256(f"{subject_id}_keyboard{keyboard_code}".encode()).hexdigest()
 
 
 def test_mouse_click_rows_are_parsed_when_the_event_label_is_present(tmp_path):
@@ -228,9 +252,9 @@ def test_keyboard_features_cover_timing_pauses_and_rollover(tmp_path):
 
     features = extract_keyboard_features(records, pause_threshold_ticks=500, ticks_per_second=1000)
 
-    assert features.dwell_time_ticks_mean == pytest.approx(166.66666666666666)
+    assert features.dwell_time_ms_mean == pytest.approx(166.66666666666666)
     assert features.pause_count == 1
-    assert features.pause_duration_ticks_mean == 900
+    assert features.pause_duration_ms_mean == 900
     assert features.rollover_ratio == pytest.approx(1 / 3)
     assert features.typing_rate_keystrokes_per_minute == pytest.approx(1800)
 

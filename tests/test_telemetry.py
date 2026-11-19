@@ -17,6 +17,7 @@ def make_payload() -> TelemetryPayload:
     return TelemetryPayload.model_validate(
         {
             "collection_version": 2,
+            "user_id": "untrusted-client-value",
             "device_id": "a" * 64,
             "session_id": str(uuid4()),
             "timestamp": "2026-10-18T12:00:00+00:00",
@@ -51,15 +52,29 @@ def test_receive_telemetry_persists_and_returns_current_record(tmp_path, monkeyp
     monkeypatch.setattr(routes, "TELEMETRY_LOG_PATH", log_path)
     payload = make_payload()
 
-    assert routes.receive_telemetry(payload) == {"status": "accepted"}
+    assert routes.receive_telemetry(payload, user_id="auth0|approved") == {"status": "accepted"}
 
     saved_record = json.loads(log_path.read_text(encoding="utf-8"))
     assert saved_record["collection_version"] == 2
     assert saved_record["public_ip_address"] is None
+    assert saved_record["user_id"] == "auth0|approved"
 
     recent_records = routes.get_recent_telemetry(limit=10)
     assert len(recent_records) == 1
     assert recent_records[0]["session_id"] == str(payload.session_id)
+
+
+def test_receive_telemetry_persists_public_ip_when_provided(tmp_path, monkeypatch):
+    log_path = tmp_path / "telemetry.jsonl"
+    monkeypatch.setattr(routes, "TELEMETRY_LOG_PATH", log_path)
+    payload_data = make_payload().model_dump(mode="json")
+    payload_data["public_ip_address"] = "203.0.113.42"
+    payload = TelemetryPayload.model_validate(payload_data)
+
+    routes.receive_telemetry(payload, user_id="auth0|approved")
+
+    saved_record = json.loads(log_path.read_text(encoding="utf-8"))
+    assert saved_record["public_ip_address"] == "203.0.113.42"
 
 
 def test_extension_telemetry_shape_is_accepted_by_http_endpoint(tmp_path, monkeypatch):
@@ -78,6 +93,8 @@ def test_extension_telemetry_shape_is_accepted_by_http_endpoint(tmp_path, monkey
     response = asyncio.run(send_payload())
     assert response.status_code == 201, response.text
     assert response.json() == {"status": "accepted"}
+    saved_record = json.loads((tmp_path / "telemetry.jsonl").read_text(encoding="utf-8"))
+    assert saved_record["user_id"] == "approved"
 
 
 def test_recent_telemetry_excludes_legacy_records(tmp_path, monkeypatch):

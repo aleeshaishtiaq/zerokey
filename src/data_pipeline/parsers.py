@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 from collections import Counter, defaultdict
@@ -44,6 +45,8 @@ class NormalizedEvent(BaseModel):
 
     dataset: Literal["keystroke", "mouse"]
     subject_id: str = Field(pattern=r"^[0-9]{3}$")
+    user_id: str | None = Field(default=None, pattern=r"^[0-9]{3}$")
+    device_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     session: int = Field(ge=0, le=2)
     condition: Literal["baseline", "rotation", "unverified"]
     filename_suffix: str = Field(pattern=r"^[0-9]{3}$")
@@ -102,6 +105,13 @@ def validate_session(session: int) -> int:
     if session not in SUPPORTED_SESSIONS:
         raise ValueError(f"Unsupported session {session}; choose one of {SUPPORTED_SESSIONS}.")
     return session
+
+
+def dataset_device_id(subject_id: str, keyboard_code: int) -> str:
+    """Return a stable synthetic device ID for one UB subject and keyboard."""
+
+    identity = f"{subject_id}_keyboard{keyboard_code}".encode("utf-8")
+    return hashlib.sha256(identity).hexdigest()
 
 
 def _issue(result: ParseResult, path: Path, line_number: int | None, reason: str) -> None:
@@ -227,6 +237,8 @@ def parse_keystroke_dataset(root: Path, session: int = 0) -> ParseResult:
                 record = NormalizedEvent(
                     dataset="keystroke",
                     subject_id=path.stem[:3],
+                    user_id=path.stem[:3],
+                    device_id=dataset_device_id(path.stem[:3], keyboard_code),
                     session=filename_session,
                     condition=subset,
                     filename_suffix=path.stem[3:],
@@ -307,6 +319,10 @@ def parse_mouse_dataset(
                         NormalizedEvent(
                             dataset="mouse",
                             subject_id=reference.subject_id,
+                            user_id=reference.subject_id,
+                            device_id=dataset_device_id(
+                                reference.subject_id, reference.keyboard_code
+                            ),
                             session=reference.session,
                             condition="unverified",
                             filename_suffix=path.stem[3:],
@@ -331,6 +347,10 @@ def parse_mouse_dataset(
                 record = NormalizedEvent(
                     dataset="mouse",
                     subject_id=reference.subject_id,
+                    user_id=reference.subject_id,
+                    device_id=dataset_device_id(
+                        reference.subject_id, reference.keyboard_code
+                    ),
                     session=reference.session,
                     condition="unverified",
                     filename_suffix=path.stem[3:],

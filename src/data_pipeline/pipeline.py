@@ -94,7 +94,11 @@ def write_feature_jsonl(
     with output_path.open("w", encoding="utf-8", newline="\n") as output_file:
         for summary in sorted(summaries, key=lambda item: item.original_filename):
             output_file.write(
-                json.dumps(summary.model_dump(mode="json"), allow_nan=False, sort_keys=True)
+                json.dumps(
+                    summary.model_dump(mode="json", exclude_none=False),
+                    allow_nan=False,
+                    sort_keys=True,
+                )
             )
             output_file.write("\n")
     return len(summaries)
@@ -221,6 +225,7 @@ def build_parser() -> argparse.ArgumentParser:
             "mouse filename semantics remain unverified."
         )
     )
+    parser.add_argument("command", nargs="?", choices=("run",), default="run")
     parser.add_argument("--session", type=int, default=0, choices=(0, 1, 2))
     parser.add_argument("--input-root", type=Path, default=DEFAULT_INPUT_ROOT)
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)
