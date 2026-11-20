@@ -10,6 +10,7 @@ const SESSION_STORAGE_KEY = 'zerokey_portal_session';
 let collectorStatus = 'Extension loaded. Waiting for activity.';
 let statusElement = null;
 let collectorStatusObserver = null;
+let collectorInterval = null;
 
 function setCollectorStatus(message) {
   if (collectorStatus === message) {
@@ -266,6 +267,10 @@ function onKeyUp(event) {
   lastKeyUpAt = now;
 }
 
+function onWindowBlur() {
+  heldKeys.clear();
+}
+
 function clearWindowFeatures() {
   previousMouse = null;
   mouseBurstStart = null;
@@ -350,7 +355,20 @@ function sendWindowFeatures() {
   chrome.runtime.sendMessage({ type: 'telemetry-window', payload }).then(
     (response) => {
       if (response?.ok) {
-        setCollectorStatus('Feature summary accepted by the configured API.');
+        if (
+          response.public_ip_status === 'disabled' ||
+          response.public_ip_status === 'permission_missing'
+        ) {
+          setCollectorStatus(
+            'Feature summary accepted. Enable public IP lookup from the extension popup to include it.',
+          );
+        } else if (response.public_ip_status === 'lookup_failed') {
+          setCollectorStatus(
+            'Feature summary accepted, but ipify could not provide the public IP.',
+          );
+        } else {
+          setCollectorStatus('Feature summary and public IP accepted by the configured API.');
+        }
       } else {
         const error = response?.error ?? 'The extension rejected the telemetry message.';
         setCollectorStatus(`Could not send telemetry: ${error}`);
@@ -367,7 +385,7 @@ function sendWindowFeatures() {
 }
 
 function startCollector() {
-  if (!ALLOWED_PORTAL_ORIGINS.has(window.location.origin)) {
+  if (!ALLOWED_PORTAL_ORIGINS.has(window.location.origin) || collectorInterval !== null) {
     return;
   }
 
@@ -380,9 +398,69 @@ function startCollector() {
   document.addEventListener('click', onClick, { passive: true });
   document.addEventListener('keydown', onKeyDown, { passive: true });
   document.addEventListener('keyup', onKeyUp, { passive: true });
-  window.addEventListener('blur', () => heldKeys.clear());
-  window.setInterval(sendWindowFeatures, WINDOW_DURATION_MS);
+  window.addEventListener('blur', onWindowBlur);
+  collectorInterval = window.setInterval(sendWindowFeatures, WINDOW_DURATION_MS);
 }
+
+function stopCollector() {
+  if (collectorInterval !== null) {
+    document.removeEventListener('mousemove', onMouseMove);
+    document.removeEventListener('click', onClick);
+    document.removeEventListener('keydown', onKeyDown);
+    document.removeEventListener('keyup', onKeyUp);
+    window.removeEventListener('blur', onWindowBlur);
+    window.clearInterval(collectorInterval);
+    collectorInterval = null;
+  }
+  heldKeys.clear();
+  clearWindowFeatures();
+  setCollectorStatus('Telemetry consent withdrawn. No further activity will be collected.');
+}
+
+window.addEventListener('message', (event) => {
+  const message = event.data;
+  if (
+    event.source !== window ||
+    event.origin !== window.location.origin ||
+    message?.source !== 'zerokey-portal'
+  ) {
+    return;
+  }
+
+  if (message.type === 'telemetry-auth') {
+    chrome.runtime.sendMessage({
+      type: 'portal-auth',
+      access_token: message.accessToken,
+      expires_at: message.expiresAt,
+    }).then(
+      (response) => {
+        if (response?.ok) {
+          setCollectorStatus('Portal identity approved. Behavioral collection is enabled.');
+          startCollector();
+        } else {
+          setCollectorStatus(response?.error ?? 'Portal identity was not approved for telemetry.');
+        }
+      },
+      (error) => {
+        console.error('Unable to provide portal authentication to the extension.', error);
+        setCollectorStatus('Could not connect portal sign-in to the extension.');
+      },
+    );
+  } else if (message.type === 'telemetry-revoke') {
+    stopCollector();
+    chrome.runtime.sendMessage({ type: 'portal-consent', consent: false }).then(
+      (response) => {
+        if (!response?.ok) {
+          setCollectorStatus(response?.error ?? 'Could not withdraw telemetry consent.');
+        }
+      },
+      (error) => {
+        console.error('Unable to withdraw telemetry consent from the extension.', error);
+        setCollectorStatus('Could not withdraw telemetry consent. Reload the extension and retry.');
+      },
+    );
+  }
+});
 
 if (ALLOWED_PORTAL_ORIGINS.has(window.location.origin)) {
   connectCollectorStatus();
