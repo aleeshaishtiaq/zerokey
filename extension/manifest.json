@@ -11,6 +11,8 @@
   "host_permissions": [
     "http://127.0.0.1/*",
     "http://localhost/*",
+    "https://zerokey-2fvk.vercel.app/*",
+    "https://zerokey-five.vercel.app/*",
     "https://api.ipify.org/*"
   ],
   "optional_host_permissions": [
@@ -28,7 +30,8 @@
     {
       "matches": [
         "http://localhost/*",
-        "http://127.0.0.1/*"
+        "http://127.0.0.1/*",
+        "https://zerokey-2fvk.vercel.app/*"
       ],
       "js": [
         "config.js",
