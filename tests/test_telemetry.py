@@ -11,6 +11,8 @@ from src.api import auth
 from src.api.main import app
 from src.api import routes
 from src.api.routes import TelemetryPayload
+from src.data import database
+from src.data_pipeline.align_live import align_records
 
 
 def make_payload() -> TelemetryPayload:
@@ -233,3 +235,68 @@ def bearer_credentials():
 class FakeJwksClient:
     def get_signing_key_from_jwt(self, _token):
         return type("SigningKey", (), {"key": "test-signing-key"})()
+
+
+def test_database_persistence_and_recent_read_sqlite(tmp_path, monkeypatch):
+    database_url = f"sqlite:///{tmp_path / 'telemetry.db'}"
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    payload = make_payload()
+
+    assert routes.receive_telemetry(
+        payload,
+        user_id="auth0|approved",
+    ) == {"status": "accepted"}
+
+    recent = routes.get_recent_telemetry(limit=10)
+    assert len(recent) == 1
+    assert recent[0]["session_id"] == str(payload.session_id)
+    assert recent[0]["public_ip_address"] is None
+    assert recent[0]["mouse_features"]["straightness_ratio"] is None
+    assert recent[0]["keyboard_features"]["dwell_time_ms_mean"] == 100
+    assert TelemetryPayload.model_validate(database.export_telemetry()[0])
+
+
+def test_database_export_is_align_live_compatible(tmp_path, monkeypatch):
+    database_url = f"sqlite:///{tmp_path / 'telemetry.db'}"
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    payload = make_payload()
+
+    routes.receive_telemetry(payload, user_id="auth0|approved")
+    exported = database.export_telemetry()
+
+    aligned = align_records(
+        exported,
+        reserved_ub_subject_ids=set(),
+    )
+    assert len(aligned) == 1
+    assert aligned[0]["keyboard_features"] == exported[0]["keyboard_features"]
+    assert aligned[0]["mouse_features"]["click_interval_ticks_mean"] is None
+
+
+def test_database_export_http_route_is_authenticated_ndjson(tmp_path, monkeypatch):
+    database_url = f"sqlite:///{tmp_path / 'telemetry.db'}"
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    payload = make_payload()
+    routes.receive_telemetry(payload, user_id="approved")
+    monkeypatch.setitem(
+        app.dependency_overrides,
+        auth.require_authorized_user,
+        lambda: "approved",
+    )
+
+    async def export_payload():
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url="http://test",
+        ) as client:
+            return await client.get("/api/telemetry/export")
+
+    response = asyncio.run(export_payload())
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/x-ndjson")
+    line = response.text.strip().splitlines()
+    assert len(line) == 1
+    exported = json.loads(line[0])
+    assert exported["user_id"] == "approved"
+    assert TelemetryPayload.model_validate(exported)

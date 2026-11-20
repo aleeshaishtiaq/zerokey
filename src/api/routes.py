@@ -9,6 +9,7 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -17,8 +18,14 @@ from pydantic import (
     field_validator,
 )
 from pydantic import ValidationError
-
+from sqlalchemy.exc import SQLAlchemyError
 from .auth import require_authorized_user
+from ..data.database import (
+    database_configured,
+    export_telemetry as db_export_telemetry,
+    insert_telemetry,
+    list_telemetry,
+)
 
 router = APIRouter()
 LOGGER = logging.getLogger(__name__)
@@ -94,17 +101,27 @@ def receive_telemetry(
         "timestamp": payload.timestamp.astimezone(timezone.utc).isoformat(),
     }
 
-    try:
-        TELEMETRY_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        with _records_lock:
-            with TELEMETRY_LOG_PATH.open("a", encoding="utf-8") as log_file:
-                log_file.write(json.dumps(record, ensure_ascii=False, allow_nan=False))
-                log_file.write("\n")
-    except OSError as error:
-        raise HTTPException(
-            status_code=500,
-            detail="Unable to persist the telemetry record.",
-        ) from error
+    if database_configured():
+        try:
+            insert_telemetry(record)
+        except (SQLAlchemyError, ValueError) as error:
+            raise HTTPException(
+                status_code=500,
+                detail="Unable to persist the telemetry record.",
+            ) from error
+    else:
+        try:
+            TELEMETRY_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+            with _records_lock:
+                with TELEMETRY_LOG_PATH.open("a", encoding="utf-8") as log_file:
+                    line = json.dumps(record, ensure_ascii=False, allow_nan=False)
+                    log_file.write(line)
+                    log_file.write("\n")
+        except OSError as error:
+            raise HTTPException(
+                status_code=500,
+                detail="Unable to persist the telemetry record.",
+            ) from error
 
     return {"status": "accepted"}
 
@@ -114,6 +131,22 @@ def get_recent_telemetry(
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     _: str = Depends(require_authorized_user),
 ) -> list[dict[str, object]]:
+    if database_configured():
+        try:
+            records = list_telemetry(limit)
+        except (SQLAlchemyError, ValueError) as error:
+            raise HTTPException(
+                status_code=500,
+                detail="Unable to read persisted telemetry records.",
+            ) from error
+        return [
+            TelemetryPayload.model_validate(record).model_dump(
+                mode="json",
+                exclude_none=False,
+            )
+            for record in records
+        ]
+
     with _records_lock:
         if not TELEMETRY_LOG_PATH.exists():
             return []
@@ -147,6 +180,57 @@ def get_recent_telemetry(
             ) from error
 
         return list(reversed(recent_records))
+
+
+@router.get("/telemetry/export")
+def export_telemetry(
+    _: str = Depends(require_authorized_user),
+) -> Response:
+    if not database_configured():
+        try:
+            records = []
+            if TELEMETRY_LOG_PATH.exists():
+                with TELEMETRY_LOG_PATH.open("r", encoding="utf-8") as log_file:
+                    for line in log_file:
+                        try:
+                            record = json.loads(line)
+                            records.append(
+                                TelemetryPayload.model_validate(record).model_dump(
+                                    mode="json",
+                                    exclude_none=False,
+                                )
+                            )
+                        except (json.JSONDecodeError, ValueError, ValidationError):
+                            continue
+            content = "".join(
+                json.dumps(record, ensure_ascii=False, allow_nan=False) + "\n"
+                for record in records
+            )
+        except OSError as error:
+            raise HTTPException(
+                status_code=500,
+                detail="Unable to export persisted telemetry records.",
+            ) from error
+        return Response(content=content, media_type="application/x-ndjson")
+    try:
+        records = db_export_telemetry()
+        validated = [
+            TelemetryPayload.model_validate(record).model_dump(
+                mode="json",
+                exclude_none=False,
+            )
+            for record in records
+        ]
+        content = "".join(
+            json.dumps(record, ensure_ascii=False, allow_nan=False) + "\n"
+            for record in validated
+        )
+    except (SQLAlchemyError, ValueError, ValidationError) as error:
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to export persisted telemetry records.",
+        ) from error
+    return Response(content=content, media_type="application/x-ndjson")
 
 
 @router.get("/health")
