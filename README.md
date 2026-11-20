@@ -7,8 +7,10 @@ ZEROKEY - Zero Dependency Browser Extension for Continuous Post-Login Authentica
 
 The GitHub Actions workflow `.github/workflows/ci.yml` runs on every push to
 `main` or `develop`, and on every pull request targeting `main` or `develop`.
-The **Lint and test** job sets up Python 3.11, installs `requirements.txt`,
-Flake8, and pytest, lints `src/` and `tests/`, then runs the tests in `tests/`.
+The **Lint and test** job sets up Python from the checked-out branch's
+`.python-version` file (currently Python 3.12 on `main` and 3.14 on `develop`),
+installs `requirements.txt`, Flake8, and pytest, lints `src/` and `tests/`, then
+runs the tests in `tests/`.
 The **Build frontends and check required files** job installs the locked Node
 dependencies and runs the production build for both `frontend/` and
 `dashboard/`. It also verifies that `frontend/index.html`,
