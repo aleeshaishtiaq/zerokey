@@ -11,11 +11,4 @@ node_modules
 **/node_modules/**
 .env*
 !.env.example
-/data/
-/data buffalo/
-docs/
-extension/
-scripts/
-tests/
-.github/
 .pytest_cache/
