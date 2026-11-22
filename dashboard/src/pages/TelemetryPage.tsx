@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { useAuth0 } from '@auth0/auth0-react';
 import { TopBar } from '../components/layout/TopBar';
+import { TelemetryFeatureValues } from '../components/TelemetryFeatureValues';
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://127.0.0.1:8765')
   .replace(/\/+$/, '');
@@ -105,10 +106,10 @@ export function TelemetryPage() {
                     {record.public_ip_address ?? 'Not available'}
                   </td>
                   <td className="min-w-64 px-4 py-3">
-                    <FeatureValues values={record.mouse_features} />
+                    <TelemetryFeatureValues values={record.mouse_features} />
                   </td>
                   <td className="min-w-64 px-4 py-3">
-                    <FeatureValues values={record.keyboard_features} />
+                    <TelemetryFeatureValues values={record.keyboard_features} />
                   </td>
                 </tr>
               ))}
@@ -124,18 +125,5 @@ export function TelemetryPage() {
         </div>
       </div>
     </>
-  );
-}
-
-function FeatureValues({ values }: { values: Record<string, number | null> }) {
-  return (
-    <dl className="grid grid-cols-1 gap-y-1">
-      {Object.entries(values).map(([name, value]) => (
-        <div key={name} className="flex justify-between gap-3">
-          <dt className="text-xs text-gray-500">{name.replace(/_/g, ' ')}</dt>
-          <dd className="font-mono text-xs text-gray-800">{value === null ? '—' : value}</dd>
-        </div>
-      ))}
-    </dl>
   );
 }
