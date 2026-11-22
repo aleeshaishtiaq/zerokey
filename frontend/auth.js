@@ -8,6 +8,7 @@ const apiBaseUrl = (
 ).trim().replace(/\/+$/, '');
 
 let auth0Client;
+let auth0ClientPromise;
 
 function sharePortalAccessToken(tokenResult) {
   if (
@@ -35,7 +36,7 @@ export async function initializePortalAuth(onAuthorized, setStatus) {
 
   try {
     setStatus('Connecting to Auth0…');
-    auth0Client = await createAuth0Client({
+    auth0ClientPromise = createAuth0Client({
       domain,
       clientId,
       authorizationParams: {
@@ -46,6 +47,7 @@ export async function initializePortalAuth(onAuthorized, setStatus) {
       cacheLocation: 'memory',
       useRefreshTokens: false,
     });
+    auth0Client = await auth0ClientPromise;
 
     const callbackParams = new URLSearchParams(window.location.search);
     const callbackError = callbackParams.get('error');
@@ -125,6 +127,9 @@ export function disablePortalTelemetry() {
 }
 
 export async function beginPortalSignIn() {
+  if (!auth0Client && auth0ClientPromise) {
+    auth0Client = await auth0ClientPromise;
+  }
   if (!auth0Client) {
     throw new Error('Auth0 is not configured for an approved staging identity.');
   }
