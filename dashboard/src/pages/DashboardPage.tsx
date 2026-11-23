@@ -94,7 +94,7 @@ export function DashboardPage() {
     };
 
     void loadRecentTelemetry();
-    const timer = window.setInterval(() => void loadRecentTelemetry(), 5_000);
+    const timer = window.setInterval(() => void loadRecentTelemetry(), 15_000);
     return () => {
       active = false;
       window.clearInterval(timer);

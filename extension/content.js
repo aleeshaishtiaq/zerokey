@@ -355,16 +355,9 @@ function sendWindowFeatures() {
   chrome.runtime.sendMessage({ type: 'telemetry-window', payload }).then(
     (response) => {
       if (response?.ok) {
-        if (
-          response.public_ip_status === 'disabled' ||
-          response.public_ip_status === 'permission_missing'
-        ) {
+        if (response.public_ip_status === 'lookup_failed') {
           setCollectorStatus(
-            'Feature summary accepted. Enable public IP lookup from the extension popup to include it.',
-          );
-        } else if (response.public_ip_status === 'lookup_failed') {
-          setCollectorStatus(
-            'Feature summary accepted, but ipify could not provide the public IP.',
+            'Feature summary accepted, but public IP lookup services could not provide an address.',
           );
         } else {
           setCollectorStatus('Feature summary and public IP accepted by the configured API.');

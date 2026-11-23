@@ -51,7 +51,7 @@ export function TelemetryPage() {
 
   useEffect(() => {
     void refresh();
-    const timer = window.setInterval(() => void refresh(), 5_000);
+    const timer = window.setInterval(() => void refresh(), 15_000);
     return () => window.clearInterval(timer);
   }, [refresh]);
 
@@ -63,7 +63,7 @@ export function TelemetryPage() {
           <div>
             <h2 className="text-lg font-semibold text-gray-900">Captured behavioral windows</h2>
             <p className="text-sm text-gray-500">
-              Refreshes automatically every 5 seconds.
+              Refreshes automatically every 15 seconds.
               {lastUpdated && ` Last updated ${lastUpdated.toLocaleTimeString()}.`}
             </p>
           </div>
