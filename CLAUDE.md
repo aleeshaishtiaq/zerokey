@@ -91,14 +91,19 @@ per split). No nulls, no IP, no window in two splits.
 - UB subjects with < 60 mouse windows (021, 049, 127) are left out of the mouse
   files; their keyboard windows stay.
 - Splits are chronological. UB: train = session 0 + first 60% of session 1,
-  calibration = rest of session 1, test = session 2. Live (planned): the
-  23-26 Nov data = 75% train / 25% calibration, and a second collection round
+  calibration = rest of session 1, test = session 2. Live is split **inside
+  every session** in time order, so every session (for example a
+  touchpad-only one) also reaches train. Planned: round 1 (data up to 26 Nov)
+  = 75% train / 25% calibration per session, and a second collection round
   after a gap = test (`--live-test-from <first day of round 2>`). Until round 2
-  exists, live uses an interim 60% / 20% / 20% split in time order, so the
-  training code can be built and checked; final live results use round 2.
+  exists, each session is split 60% / 20% / 20%, so the training code can be
+  built and checked; final live results use round 2.
 - Normalized files use a median/IQR scaler fitted on the **train** split only.
 - Live users are relabelled `L01`, `L02`, ... by sorted user ID; the real ID
   stays in `user_id`.
+- Round 1 live export: `data/raw/zerokey_captured/telemetry_round1_train_calibration_2026-11-26.csv`.
+  For round 2, save the new full export in the same folder and pass it with
+  `--live-file` plus `--live-test-from`.
 - The UB folders are large; if the run is slow on a mounted drive, copy them
   to a local disk first.
 - `data/` is gitignored. Training data is shared as a zip outside git.

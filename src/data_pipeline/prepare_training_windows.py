@@ -13,10 +13,12 @@ normalization_params.json and data_quality_report.json.
 Splits (chronological, so no future behaviour leaks into training):
     UB    train = session 0 + first 60% of session 1, calibration = rest of
           session 1, test = session 2 (recorded weeks later).
-    live  with --live-test-from (a later collection round, after a gap):
-          earlier windows = 75% train / 25% calibration, later round = test.
-          Without it (interim, until round 2 exists): per user and modality,
-          60% train / 20% calibration / 20% test, all in time order.
+    live  split inside every session, in time order, so every session (for
+          example a touchpad-only session) also reaches train. With
+          --live-test-from (a later collection round, after a gap): earlier
+          sessions = 75% train / 25% calibration each, later round = test.
+          Without it (interim, until round 2 exists): each session 60% train
+          / 20% calibration / 20% test.
 Train is for fitting the models, calibration for thresholds and risk-state
 boundaries, test only for the final metrics.
 
@@ -616,19 +618,19 @@ def live_rows(records: list[dict[str, Any]], report: Counter,
 
 
 def assign_live_splits(rows: list[dict[str, Any]], has_round2: bool = False) -> list[dict[str, Any]]:
-    """Live split per user, in time order.
+    """Live split inside each session, in time order.
 
-    With a later round (rows already marked "test"): round 1 = 75% train /
-    25% calibration. Without one: 60% train / 20% calibration / 20% test.
-    ``rows`` must be in _live_order (time order within each user).
+    With a later round (rows already marked "test"): each round-1 session =
+    75% train / 25% calibration. Without one: each session 60% train / 20%
+    calibration / 20% test. ``rows`` must be in _live_order (time order).
     """
     train_fraction, calibration_fraction = (
         LIVE_SPLIT_WITH_ROUND2 if has_round2 else LIVE_SPLIT_INTERIM
     )
-    round1: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    round1: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
         if row["split"] == "round1":
-            round1[row["subject_id"]].append(row)
+            round1[(row["subject_id"], row["session_id"])].append(row)
     for subject_rows in round1.values():
         train_end = math.ceil(len(subject_rows) * train_fraction)
         calibration_end = math.ceil(len(subject_rows) * (train_fraction + calibration_fraction))
@@ -813,8 +815,8 @@ def main(argv: list[str] | None = None) -> int:
         "splits": {
             "ub": "train = session 0 + first 60% of session 1; calibration = rest of "
                   "session 1; test = session 2",
-            "live": "with --live-test-from: earlier windows 75% train / 25% calibration, "
-                    "later round = test; without it: 60/20/20 in time order",
+            "live": "inside every session, time order: with --live-test-from 75% train "
+                    "/ 25% calibration and the later round = test; without it 60/20/20",
             "live_test_from": test_from.isoformat() if test_from else None,
         },
     }

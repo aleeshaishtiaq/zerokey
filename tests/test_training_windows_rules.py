@@ -67,17 +67,30 @@ def test_ub_splits_are_chronological_by_session():
 def test_live_interim_split_is_60_20_20():
     from src.data_pipeline.prepare_training_windows import assign_live_splits
 
-    data = [{"subject_id": "L01", "split": "round1"} for _ in range(10)]
+    data = [{"subject_id": "L01", "session_id": "a", "split": "round1"} for _ in range(10)]
     splits = [row["split"] for row in assign_live_splits(data)]
 
     assert splits == ["train"] * 6 + ["calibration"] * 2 + ["test"] * 2
 
 
+def test_live_split_is_done_inside_each_session():
+    from src.data_pipeline.prepare_training_windows import assign_live_splits
+
+    mouse_session = [{"subject_id": "L01", "session_id": "a", "split": "round1"} for _ in range(5)]
+    touchpad_session = [
+        {"subject_id": "L01", "session_id": "b", "split": "round1"} for _ in range(5)
+    ]
+    splits = [row["split"] for row in assign_live_splits(mouse_session + touchpad_session)]
+
+    # the later (touchpad) session also reaches train
+    assert splits[5:] == ["train"] * 3 + ["calibration"] + ["test"]
+
+
 def test_live_round_two_is_test_and_round_one_is_train_and_calibration():
     from src.data_pipeline.prepare_training_windows import assign_live_splits
 
-    data = [{"subject_id": "L01", "split": "round1"} for _ in range(8)]
-    data += [{"subject_id": "L01", "split": "test"} for _ in range(3)]
+    data = [{"subject_id": "L01", "session_id": "a", "split": "round1"} for _ in range(8)]
+    data += [{"subject_id": "L01", "session_id": "r2", "split": "test"} for _ in range(3)]
     splits = [row["split"] for row in assign_live_splits(data, has_round2=True)]
 
     assert splits == ["train"] * 6 + ["calibration"] * 2 + ["test"] * 3
