@@ -326,6 +326,7 @@ def ub_keyboard_rows(report: Counter) -> Iterator[dict[str, Any]]:
         start = events[0][0]
         collector = KeyboardWindow()
         current = 0
+
         def flush(index: int) -> Iterator[dict[str, Any]]:
             report["ub_keyboard_windows_total"] += 1
             if collector.key_downs < MIN_KEYDOWNS:
@@ -379,6 +380,7 @@ def ub_mouse_rows(report: Counter, conditions: dict[str, str]) -> Iterator[dict[
         start = events[0][0]
         collector = MouseWindow()
         current = 0
+
         def flush(index: int) -> Iterator[dict[str, Any]]:
             report["ub_mouse_windows_total"] += 1
             row, reason = clean_mouse(collector.features())
@@ -453,6 +455,14 @@ def _parse_time(value: str) -> datetime:
     return datetime.fromisoformat(text)
 
 
+def _live_order(row: dict[str, Any]) -> tuple:
+    return row["subject_id"], row["session"], row["window_index"]
+
+
+def _ub_order(row: dict[str, Any]) -> tuple:
+    return row["subject_id"], row["session"], row["session_id"], row["window_index"]
+
+
 def live_rows(records: list[dict[str, Any]], report: Counter):
     usable = []
     seen = set()
@@ -513,9 +523,8 @@ def live_rows(records: list[dict[str, Any]], report: Counter):
         report[f"live_mouse_{ms_reason}"] += 1
         if ms_row:
             mouse.append(window_record(modality="mouse", features=ms_row, **common))
-    order = lambda row: (row["subject_id"], row["session"], row["window_index"])
-    keyboard.sort(key=order)
-    mouse.sort(key=order)
+    keyboard.sort(key=_live_order)
+    mouse.sort(key=_live_order)
     return keyboard, mouse, subject_of
 
 
@@ -599,12 +608,11 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.skip_ub:
         conditions = {path.stem: path.parent.name for path in UB_KEYSTROKE_ROOT.glob("s[0-2]/*/*.txt")}
-        ub_order = lambda row: (row["subject_id"], row["session"], row["session_id"], row["window_index"])
         summary["ub_keyboard_rows"] = _write(
-            out / "ub_keyboard_windows_clean.jsonl", sorted(ub_keyboard_rows(report), key=ub_order)
+            out / "ub_keyboard_windows_clean.jsonl", sorted(ub_keyboard_rows(report), key=_ub_order)
         )
         summary["ub_mouse_rows"] = _write(
-            out / "ub_mouse_windows_clean.jsonl", sorted(ub_mouse_rows(report, conditions), key=ub_order)
+            out / "ub_mouse_windows_clean.jsonl", sorted(ub_mouse_rows(report, conditions), key=_ub_order)
         )
 
     live_path = args.live_file or _latest_live_file()
