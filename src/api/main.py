@@ -3,6 +3,7 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from . import settings  # noqa: F401  (loads .env before routes reads it)
 from .routes import router
 
 configured_origins = os.getenv("CORS_ALLOWED_ORIGINS", "")
@@ -24,6 +25,10 @@ allowed_origins = list(
             "http://127.0.0.1:5500",
             "http://localhost:5173",
             "http://127.0.0.1:5173",
+            "https://zerokey-2fvk.vercel.app",
+            "chrome-extension://dknfcifmcoifbnhifooeichkinilladn",
+            "chrome-extension://medfnjlndpclielllbmjkpfencobolke",
+            "chrome-extension://mpgmppmjgfddgleipgpjofdohancoiaf",
             frontend_origin,
             dashboard_origin,
             *configured_allowed_origins,

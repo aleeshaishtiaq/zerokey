@@ -256,6 +256,21 @@ def test_database_persistence_and_recent_read_sqlite(tmp_path, monkeypatch):
     assert TelemetryPayload.model_validate(database.export_telemetry()[0])
 
 
+def test_database_persists_and_returns_public_ip_address(tmp_path, monkeypatch):
+    database_url = f"sqlite:///{tmp_path / 'telemetry.db'}"
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    payload_data = make_payload().model_dump(mode="json")
+    payload_data["public_ip_address"] = "203.0.113.42"
+    payload = TelemetryPayload.model_validate(payload_data)
+
+    routes.receive_telemetry(payload, user_id="auth0|approved")
+
+    recent = routes.get_recent_telemetry(limit=10)
+    assert len(recent) == 1
+    assert recent[0]["public_ip_address"] == "203.0.113.42"
+    assert database.export_telemetry()[0]["public_ip_address"] == "203.0.113.42"
+
+
 def test_database_export_is_align_live_compatible(tmp_path, monkeypatch):
     database_url = f"sqlite:///{tmp_path / 'telemetry.db'}"
     monkeypatch.setenv("DATABASE_URL", database_url)

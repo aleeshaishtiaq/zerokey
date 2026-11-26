@@ -20,11 +20,13 @@ from pydantic import (
 from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 from .auth import require_authorized_user
+from .settings import resolve_repository_path
 from ..data.database import (
     database_configured,
     export_telemetry as db_export_telemetry,
     insert_telemetry,
     list_telemetry,
+    telemetry_status,
 )
 
 router = APIRouter()
@@ -36,10 +38,25 @@ _default_telemetry_log_path = (
     / "zerokey_captured"
     / "telemetry_log.jsonl"
 )
-TELEMETRY_LOG_PATH = Path(
-    os.getenv("TELEMETRY_LOG_PATH", "").strip() or _default_telemetry_log_path
+TELEMETRY_LOG_PATH = resolve_repository_path(
+    os.getenv("TELEMETRY_LOG_PATH", ""), _default_telemetry_log_path
 )
 _records_lock = threading.Lock()
+
+
+def _storage_backend() -> str:
+    return "database" if database_configured() else "jsonl"
+
+
+def _require_writable_storage() -> None:
+    if not database_configured() and os.getenv("VERCEL"):
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "DATABASE_URL is not configured on the server. Add it in the "
+                "Vercel project's Environment Variables and redeploy."
+            ),
+        )
 
 
 class FeatureModel(BaseModel):
@@ -53,6 +70,11 @@ class MouseFeatures(FeatureModel):
     direction_changes_per_second: float = Field(ge=0)
     straightness_ratio: float | None = Field(default=None, ge=0, le=1)
     click_interval_ms_mean: float | None = Field(default=None, ge=0)
+    # Device signals (extension 1.5.3+). Optional so older extensions still work.
+    pointer_event_rate_hz: float | None = Field(default=None, ge=0)
+    coalesced_events_per_move: float | None = Field(default=None, ge=0)
+    wheel_event_count: int | None = Field(default=None, ge=0)
+    wheel_smooth_ratio: float | None = Field(default=None, ge=0, le=1)
 
 
 class KeyboardFeatures(FeatureModel):
@@ -101,13 +123,15 @@ def receive_telemetry(
         "timestamp": payload.timestamp.astimezone(timezone.utc).isoformat(),
     }
 
+    _require_writable_storage()
     if database_configured():
         try:
             insert_telemetry(record)
         except (SQLAlchemyError, ValueError) as error:
+            LOGGER.exception("Database insert for telemetry failed.")
             raise HTTPException(
                 status_code=500,
-                detail="Unable to persist the telemetry record.",
+                detail=f"Unable to save telemetry to the database ({type(error).__name__}).",
             ) from error
     else:
         try:
@@ -118,6 +142,7 @@ def receive_telemetry(
                     log_file.write(line)
                     log_file.write("\n")
         except OSError as error:
+            LOGGER.exception("Writing telemetry to %s failed.", TELEMETRY_LOG_PATH)
             raise HTTPException(
                 status_code=500,
                 detail="Unable to persist the telemetry record.",
@@ -135,17 +160,23 @@ def get_recent_telemetry(
         try:
             records = list_telemetry(limit)
         except (SQLAlchemyError, ValueError) as error:
+            LOGGER.exception("Reading recent telemetry from the database failed.")
             raise HTTPException(
                 status_code=500,
                 detail="Unable to read persisted telemetry records.",
             ) from error
-        return [
-            TelemetryPayload.model_validate(record).model_dump(
-                mode="json",
-                exclude_none=False,
-            )
-            for record in records
-        ]
+        validated_records = []
+        for record in records:
+            try:
+                validated_records.append(
+                    TelemetryPayload.model_validate(record).model_dump(
+                        mode="json",
+                        exclude_none=False,
+                    )
+                )
+            except ValidationError as error:
+                LOGGER.warning("Skipping invalid telemetry row from the database: %s", error)
+        return validated_records
 
     with _records_lock:
         if not TELEMETRY_LOG_PATH.exists():
@@ -235,7 +266,28 @@ def export_telemetry(
 
 @router.get("/health")
 def health_check() -> dict[str, str]:
-    return {"status": "ok"}
+    return {"status": "ok", "storage": _storage_backend()}
+
+
+@router.get("/telemetry/status")
+def get_telemetry_status(
+    _: str = Depends(require_authorized_user),
+) -> dict[str, object]:
+    """Show where telemetry is stored and whether it is reachable."""
+    status: dict[str, object] = {
+        "storage": _storage_backend(),
+    }
+    if database_configured():
+        try:
+            status.update(telemetry_status())
+            status["database"] = "connected"
+        except (SQLAlchemyError, ValueError) as error:
+            LOGGER.exception("Telemetry database status check failed.")
+            status["database"] = f"error: {type(error).__name__}"
+    else:
+        status["log_path"] = str(TELEMETRY_LOG_PATH)
+        status["log_exists"] = TELEMETRY_LOG_PATH.exists()
+    return status
 
 
 @router.get("/auth/check", dependencies=[Depends(require_authorized_user)])

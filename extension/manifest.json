@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ZeroKey Behavioral Telemetry",
-  "version": "1.5.0",
+  "version": "1.5.3",
   "description": "Collects privacy-preserving behavioral feature summaries on the ZeroKey portal.",
   "permissions": [
     "storage",
@@ -11,7 +11,10 @@
   "host_permissions": [
     "http://127.0.0.1/*",
     "http://localhost/*",
-    "https://api.ipify.org/*"
+    "https://zerokey-2fvk.vercel.app/*",
+    "https://zerokey-five.vercel.app/*",
+    "https://api.ipify.org/*",
+    "https://checkip.amazonaws.com/*"
   ],
   "optional_host_permissions": [
     "https://*.auth0.com/*",
@@ -28,7 +31,8 @@
     {
       "matches": [
         "http://localhost/*",
-        "http://127.0.0.1/*"
+        "http://127.0.0.1/*",
+        "https://zerokey-2fvk.vercel.app/*"
       ],
       "js": [
         "config.js",

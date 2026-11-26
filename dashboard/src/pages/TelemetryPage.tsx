@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { useAuth0 } from '@auth0/auth0-react';
 import { TopBar } from '../components/layout/TopBar';
+import { TelemetryFeatureValues } from '../components/TelemetryFeatureValues';
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://127.0.0.1:8765')
   .replace(/\/+$/, '');
@@ -31,7 +32,9 @@ export function TelemetryPage() {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
       if (!response.ok) {
-        throw new Error(`Telemetry API returned HTTP ${response.status}.`);
+        const body = (await response.json().catch(() => null)) as { detail?: unknown } | null;
+        const detail = typeof body?.detail === 'string' ? ` ${body.detail}` : '';
+        throw new Error(`Telemetry API returned HTTP ${response.status}.${detail}`);
       }
       const recentRecords = (await response.json()) as TelemetryRecord[];
       setRecords(recentRecords);
@@ -50,7 +53,7 @@ export function TelemetryPage() {
 
   useEffect(() => {
     void refresh();
-    const timer = window.setInterval(() => void refresh(), 5_000);
+    const timer = window.setInterval(() => void refresh(), 15_000);
     return () => window.clearInterval(timer);
   }, [refresh]);
 
@@ -62,7 +65,7 @@ export function TelemetryPage() {
           <div>
             <h2 className="text-lg font-semibold text-gray-900">Captured behavioral windows</h2>
             <p className="text-sm text-gray-500">
-              Refreshes automatically every 5 seconds.
+              Refreshes automatically every 15 seconds.
               {lastUpdated && ` Last updated ${lastUpdated.toLocaleTimeString()}.`}
             </p>
           </div>
@@ -90,7 +93,7 @@ export function TelemetryPage() {
                 <th className="px-4 py-3">Device ID (SHA-256)</th>
                 <th className="px-4 py-3">Session ID</th>
                 <th className="px-4 py-3">Timestamp</th>
-                <th className="px-4 py-3">Public IP (ipify)</th>
+                <th className="px-4 py-3">Session IP</th>
                 <th className="px-4 py-3">Mouse features</th>
                 <th className="px-4 py-3">Keyboard features</th>
               </tr>
@@ -105,10 +108,10 @@ export function TelemetryPage() {
                     {record.public_ip_address ?? 'Not available'}
                   </td>
                   <td className="min-w-64 px-4 py-3">
-                    <FeatureValues values={record.mouse_features} />
+                    <TelemetryFeatureValues values={record.mouse_features} />
                   </td>
                   <td className="min-w-64 px-4 py-3">
-                    <FeatureValues values={record.keyboard_features} />
+                    <TelemetryFeatureValues values={record.keyboard_features} />
                   </td>
                 </tr>
               ))}
@@ -124,18 +127,5 @@ export function TelemetryPage() {
         </div>
       </div>
     </>
-  );
-}
-
-function FeatureValues({ values }: { values: Record<string, number | null> }) {
-  return (
-    <dl className="grid grid-cols-1 gap-y-1">
-      {Object.entries(values).map(([name, value]) => (
-        <div key={name} className="flex justify-between gap-3">
-          <dt className="text-xs text-gray-500">{name.replace(/_/g, ' ')}</dt>
-          <dd className="font-mono text-xs text-gray-800">{value === null ? '—' : value}</dd>
-        </div>
-      ))}
-    </dl>
   );
 }

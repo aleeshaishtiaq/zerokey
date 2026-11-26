@@ -4,6 +4,13 @@ High-fidelity prototype for **ZeroKey — Continuous Post-Login Authentication &
 
 ## Run locally
 
+Create `dashboard/.env.local` from `.env.example`. Set the Auth0 domain, client ID,
+and audience to the same SPA configuration used by the portal, and point
+`VITE_API_URL` at a reachable API. The Auth0 application must allow
+`http://localhost:5173/` as a callback and logout URL and
+`http://localhost:5173` as a web origin. Sign-in requires an identity authorized
+by the API.
+
 ```bash
 npm install
 npm run dev
@@ -19,7 +26,8 @@ Open the URL shown in the terminal (typically `http://localhost:5173`).
 - React Router
 - Recharts
 
-All data is mock/local state — no backend required.
+Most console screens use mock/local state. The telemetry page reads from the API
+and requires an authenticated, authorized session.
 
 ## Feasibility testing
 

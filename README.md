@@ -83,7 +83,7 @@ secrets. Required environment names:
 | FastAPI | `AUTH0_DOMAIN`, `AUTH0_AUDIENCE`, `AUTH0_ALLOWED_SUBJECTS`, `CORS_ALLOWED_ORIGINS`, `TELEMETRY_LOG_PATH`; Render supplies `PORT` |
 | Portal static-site build | `VITE_AUTH0_DOMAIN`, `VITE_AUTH0_CLIENT_ID`, `VITE_AUTH0_AUDIENCE`, `VITE_API_URL` |
 | Dashboard static-site build | The same four `VITE_*` settings as the portal |
-| Extension | `auth0Domain`, `auth0ClientId`, `auth0Audience`, `apiOrigin`, and `portalOrigin` in `extension/config.js`; optional portal/API permissions are limited to those configured origins, while the separate ipify host permission is required and lookup remains off until explicitly enabled |
+| Extension | `auth0Domain`, `auth0ClientId`, `auth0Audience`, `apiOrigin`, and `portalOrigin` in `extension/config.js`; optional portal/API permissions are limited to those configured origins, while the ipify and Amazon checkip host permissions are required for IP lookup after telemetry consent |
 
 Do not place secrets, real telemetry logs, or approved user lists in the
 repository. Public SPA Auth0 settings may appear in the frontend example file;
@@ -119,9 +119,10 @@ restrict a port, the content script and service worker enforce these exact
 origins. For staging, set the exact Vercel portal and API origins in
 `extension/config.js`; the extension requests runtime host permission only for
 those configured origins and dynamically registers its content script only on
-the configured portal. The separate `api.ipify.org` host permission is used
-only when public-IP lookup is explicitly enabled in the popup and telemetry
-consent is active.
+the configured portal. The required ipify and Amazon checkip host permissions
+are used for public-IP lookup after telemetry consent.
+After reloading or updating the extension, refresh the portal tab and sign in
+again if prompted; its access token is kept in session-only extension storage.
 
 The extension records nothing until mouse or keyboard activity occurs and sends
 15-second feature summaries only for windows containing activity. It does not
@@ -182,17 +183,16 @@ tokens and require an exact allowlisted subject. Until
 `AUTH0_DOMAIN`, `AUTH0_AUDIENCE`, and `AUTH0_ALLOWED_SUBJECTS` are configured,
 data access is denied. CORS is limited to the explicit configured origins (or
 localhost development defaults) and does not replace token authentication.
-The extension can look up the visitor's public IP using ipify's free
-`https://api.ipify.org?format=json`
-endpoint only after telemetry consent and when a behavioral activity window is
-ready to send. The extension has a required, narrowly scoped `api.ipify.org`
-host permission, but lookup remains off until explicitly enabled in the popup.
-It caches a successful result in session-only extension storage for 15 minutes;
-turning lookup off clears that cache. ipify receives the visitor's public IP,
-which is a public egress address that can belong to a VPN, proxy, or shared
-network and is not necessarily a unique user or their local network address.
-If lookup is disabled or fails, feature data is still saved with a `null`
-public IP.
+After telemetry consent, when a behavioral activity window is ready to send,
+the extension looks up the visitor's public IP using ipify
+(`https://api.ipify.org?format=json`), then tries Amazon checkip
+(`https://checkip.amazonaws.com`) if ipify is unavailable or returns an invalid
+address. It caches a successful result in session-only extension storage for
+15 minutes. Both endpoints have narrowly scoped required host permissions.
+These services receive the visitor's public IP, which is a public egress
+address that can belong to a VPN, proxy, or shared network and is not
+necessarily a unique user or their local network address. If both lookups fail,
+feature data is still saved with a `null` public IP.
 
 ### Run the portal and dashboard
 

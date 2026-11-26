@@ -5,12 +5,21 @@ const DEVICE_ID_KEY = 'device_id';
 const ACCESS_TOKEN_KEY = 'auth0_access_token';
 const ACCESS_TOKEN_EXPIRY_KEY = 'auth0_access_token_expiry';
 const TELEMETRY_CONSENT_KEY = 'telemetry_consent';
-const PUBLIC_IP_ENABLED_KEY = 'public_ip_lookup_enabled';
 const PUBLIC_IP_KEY = 'public_ip_address';
 const PUBLIC_IP_FETCHED_AT_KEY = 'public_ip_fetched_at';
 const PUBLIC_IP_CACHE_TTL_MS = 15 * 60 * 1000;
-const IPIFY_URL = 'https://api.ipify.org?format=json';
-const IPIFY_PERMISSION = 'https://api.ipify.org/*';
+const PUBLIC_IP_LOOKUP_PROVIDERS = [
+  {
+    name: 'ipify',
+    url: 'https://api.ipify.org?format=json',
+    readAddress: async (response) => (await response.json()).ip,
+  },
+  {
+    name: 'Amazon checkip',
+    url: 'https://checkip.amazonaws.com',
+    readAddress: async (response) => response.text(),
+  },
+];
 const TELEMETRY_API_URL = `${CONFIG.apiOrigin.replace(/\/+$/, '')}/api/telemetry`;
 const ALLOWED_PORTAL_ORIGINS = new Set([
   'http://localhost:5500',
@@ -140,7 +149,7 @@ async function getAccessToken() {
     typeof saved[ACCESS_TOKEN_EXPIRY_KEY] !== 'number' ||
     saved[ACCESS_TOKEN_EXPIRY_KEY] <= Date.now() + 30_000
   ) {
-    throw new Error('Sign in from the extension popup before collecting telemetry.');
+    throw new Error('Sign in to the portal and enable telemetry before collecting activity.');
   }
   return saved[ACCESS_TOKEN_KEY];
 }
@@ -219,46 +228,49 @@ function isValidIpAddress(value) {
 }
 
 async function getPublicIpAddress() {
-  const settings = await chrome.storage.local.get(PUBLIC_IP_ENABLED_KEY);
-  if (settings[PUBLIC_IP_ENABLED_KEY] !== true) {
-    return { address: null, status: 'disabled' };
-  }
-
-  const hasPermission = await chrome.permissions.contains({ origins: [IPIFY_PERMISSION] });
-  if (!hasPermission) {
-    return { address: null, status: 'permission_missing' };
-  }
-
-  const saved = await chrome.storage.session.get([PUBLIC_IP_KEY, PUBLIC_IP_FETCHED_AT_KEY]);
-  if (
-    typeof saved[PUBLIC_IP_KEY] === 'string' &&
-    typeof saved[PUBLIC_IP_FETCHED_AT_KEY] === 'number' &&
-    Date.now() - saved[PUBLIC_IP_FETCHED_AT_KEY] < PUBLIC_IP_CACHE_TTL_MS
-  ) {
-    return { address: saved[PUBLIC_IP_KEY], status: 'available' };
-  }
-
   try {
-    const response = await fetch(IPIFY_URL, {
-      cache: 'no-store',
-      signal: AbortSignal.timeout(5_000),
-    });
-    if (!response.ok) {
-      throw new Error(`ipify returned HTTP ${response.status}.`);
+    const saved = await chrome.storage.session.get([PUBLIC_IP_KEY, PUBLIC_IP_FETCHED_AT_KEY]);
+    if (
+      typeof saved[PUBLIC_IP_KEY] === 'string' &&
+      isValidIpAddress(saved[PUBLIC_IP_KEY]) &&
+      typeof saved[PUBLIC_IP_FETCHED_AT_KEY] === 'number' &&
+      Date.now() - saved[PUBLIC_IP_FETCHED_AT_KEY] < PUBLIC_IP_CACHE_TTL_MS
+    ) {
+      return { address: saved[PUBLIC_IP_KEY], status: 'available' };
     }
-    const result = await response.json();
-    if (typeof result.ip !== 'string' || !isValidIpAddress(result.ip)) {
-      throw new Error('ipify returned an invalid IP address.');
-    }
-    await chrome.storage.session.set({
-      [PUBLIC_IP_KEY]: result.ip,
-      [PUBLIC_IP_FETCHED_AT_KEY]: Date.now(),
-    });
-    return { address: result.ip, status: 'available' };
   } catch (error) {
-    console.warn('Unable to look up the public IP with ipify.', error);
-    return { address: null, status: 'lookup_failed' };
+    console.warn('Unable to read the cached public IP; requesting a fresh value.', error);
   }
+
+  for (const provider of PUBLIC_IP_LOOKUP_PROVIDERS) {
+    try {
+      const response = await fetch(provider.url, {
+        cache: 'no-store',
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (!response.ok) {
+        throw new Error(`${provider.name} returned HTTP ${response.status}.`);
+      }
+      const result = await provider.readAddress(response);
+      const address = typeof result === 'string' ? result.trim() : '';
+      if (!isValidIpAddress(address)) {
+        throw new Error(`${provider.name} returned an invalid IP address.`);
+      }
+      try {
+        await chrome.storage.session.set({
+          [PUBLIC_IP_KEY]: address,
+          [PUBLIC_IP_FETCHED_AT_KEY]: Date.now(),
+        });
+      } catch (error) {
+        console.warn(`Unable to cache the public IP returned by ${provider.name}.`, error);
+      }
+      return { address, status: 'available' };
+    } catch (error) {
+      console.warn(`Public IP lookup with ${provider.name} failed.`, error);
+    }
+  }
+
+  return { address: null, status: 'lookup_failed' };
 }
 
 async function forwardTelemetry(payload) {
