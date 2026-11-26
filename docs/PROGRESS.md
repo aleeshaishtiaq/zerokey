@@ -16,7 +16,7 @@ Newest entry first. Every chat adds an entry here at the end of its task
 - [ ] Live round 2 (Areeba, Aleesha) for the final live **test** split: collect
   after a 2-3 day gap (one week better), when Azka says her training code is
   ready; then export and rerun with `--live-test-from <first day of round 2>`
-  (23-26 Nov data then becomes 75% train / 25% calibration).
+  (23-26 Nov data then becomes 75% train / 25% calibration per session).
 - [ ] Later: profile clustering + gatekeeper / step-up flow from
   `docs/input-profiles-design.md` (max 7 profiles, removal only after 1 year
   unused, 8th profile -> admin review).
@@ -36,6 +36,27 @@ rows on Aleesha's device ID) was saved under Areeba's account, so it is valid
 training data.
 
 ## Log
+
+### 2026-11-26 (evening) — Areeba
+- Extension 1.5.3 tested after the API deploy: rows arrive with the four
+  device signals (the portal tab must be refreshed after reloading the
+  extension).
+- Added 30 minutes of **touchpad-only** data (L01, 20:40-21:10 PKT, 122 mouse
+  windows, all with `wheel_smooth_ratio = 1.0` when scrolling).
+- Live split is now done **inside every session** (60/20/20 interim; 75/25
+  train/calibration once round 2 exists), so the touchpad session also
+  reaches train (74 / 24 / 24 windows). New test in
+  `tests/test_training_windows_rules.py`; full suite 59 passed.
+- Round 1 live export renamed to
+  `telemetry_round1_train_calibration_2026-11-26.csv` (954 rows). Training
+  data rebuilt (UB unchanged; live keyboard 337 / 110 / 104, live mouse
+  322 / 104 / 99) and sent to Azka as zip v4.
+- Pointer devices in the live data (stated by the members):
+  - **L02 (Aleesha): all pointer data is touchpad.** She does not use a mouse
+    and cannot give mouse data; her pointer model is a touchpad model.
+  - L01 (Areeba): the 122 windows of 26 Nov 20:40-21:10 are touchpad (with
+    device signals). For her earlier windows (23-26 Nov, before 1.5.3) the
+    device is not known.
 
 ### 2026-11-26 — Areeba
 - Touchpad support, redesigned: no `mouse`/`touchpad` label (browsers cannot
