@@ -7,6 +7,17 @@ const WINDOW_DURATION_MS = 15_000;
 const PAUSE_THRESHOLD_MS = 500;
 const SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 const SESSION_STORAGE_KEY = 'zerokey_portal_session';
+// Device signals. Browsers report a touchpad as pointerType "mouse", so the
+// device is never labelled. These raw input characteristics are sent as
+// numbers instead; training uses them to separate a user's input profiles
+// (for example a laptop touchpad and an external mouse).
+const POINTER_ACTIVE_GAP_MS = 60;
+let pointerRawEvents = 0;
+let pointerMoveEvents = 0;
+let pointerActiveMs = 0;
+let lastPointerRawAt = null;
+let wheelEvents = 0;
+let smoothWheelEvents = 0;
 let collectorStatus = 'Extension loaded. Waiting for activity.';
 let statusElement = null;
 let collectorStatusObserver = null;
@@ -208,6 +219,52 @@ function onMouseMove(event) {
   previousMouse = point;
 }
 
+function onPointerMove(event) {
+  if (event.pointerType !== 'mouse' || !portalSession) {
+    return;
+  }
+
+  const samples = event.getCoalescedEvents?.() ?? [];
+  pointerMoveEvents += 1;
+  for (const sample of samples.length > 0 ? samples : [event]) {
+    pointerRawEvents += 1;
+    if (lastPointerRawAt !== null) {
+      const gap = sample.timeStamp - lastPointerRawAt;
+      if (gap > 0 && gap < POINTER_ACTIVE_GAP_MS) {
+        pointerActiveMs += gap;
+      }
+    }
+    lastPointerRawAt = sample.timeStamp;
+  }
+}
+
+function isWheelNotch(event) {
+  // Line/page scrolling, or whole 120-unit steps, come from a notched wheel.
+  // Anything else is smooth scrolling (touchpad or free-spinning wheel).
+  if (event.deltaMode !== 0) {
+    return true;
+  }
+  return (
+    Number.isInteger(event.deltaX) &&
+    Number.isInteger(event.deltaY) &&
+    typeof event.wheelDeltaX === 'number' &&
+    typeof event.wheelDeltaY === 'number' &&
+    event.wheelDeltaX % 120 === 0 &&
+    event.wheelDeltaY % 120 === 0
+  );
+}
+
+function onWheel(event) {
+  if ((event.deltaX === 0 && event.deltaY === 0) || !markPortalActivity()) {
+    return;
+  }
+
+  wheelEvents += 1;
+  if (!isWheelNotch(event)) {
+    smoothWheelEvents += 1;
+  }
+}
+
 function onClick() {
   if (!markPortalActivity()) {
     return;
@@ -294,6 +351,12 @@ function clearWindowFeatures() {
   pressPressIntervals = [];
   keyIntervals = [];
   pauseDurations = [];
+  pointerRawEvents = 0;
+  pointerMoveEvents = 0;
+  pointerActiveMs = 0;
+  lastPointerRawAt = null;
+  wheelEvents = 0;
+  smoothWheelEvents = 0;
 }
 
 function sendWindowFeatures() {
@@ -331,6 +394,12 @@ function sendWindowFeatures() {
           ? Math.min(1, displacement / mousePathLength)
           : null,
       click_interval_ms_mean: mean(clickIntervals),
+      pointer_event_rate_hz:
+        pointerActiveMs > 0 ? pointerRawEvents / (pointerActiveMs / 1000) : null,
+      coalesced_events_per_move:
+        pointerMoveEvents > 0 ? pointerRawEvents / pointerMoveEvents : null,
+      wheel_event_count: wheelEvents,
+      wheel_smooth_ratio: wheelEvents > 0 ? smoothWheelEvents / wheelEvents : null,
     },
     keyboard_features: {
       dwell_time_ms_mean: mean(dwellTimes),
@@ -389,6 +458,8 @@ function startCollector() {
   }
   document.addEventListener('mousemove', onMouseMove, { passive: true });
   document.addEventListener('click', onClick, { passive: true });
+  document.addEventListener('pointermove', onPointerMove, { passive: true });
+  document.addEventListener('wheel', onWheel, { passive: true });
   document.addEventListener('keydown', onKeyDown, { passive: true });
   document.addEventListener('keyup', onKeyUp, { passive: true });
   window.addEventListener('blur', onWindowBlur);
@@ -399,6 +470,8 @@ function stopCollector() {
   if (collectorInterval !== null) {
     document.removeEventListener('mousemove', onMouseMove);
     document.removeEventListener('click', onClick);
+    document.removeEventListener('pointermove', onPointerMove);
+    document.removeEventListener('wheel', onWheel);
     document.removeEventListener('keydown', onKeyDown);
     document.removeEventListener('keyup', onKeyUp);
     window.removeEventListener('blur', onWindowBlur);

@@ -128,7 +128,14 @@ def test_schema_verification_reports_live_and_ub_contract_differences():
     assert report["exact_feature_keys_match"] is False
     assert report["feature_key_differences"]["mouse"] == {
         "ub_only": ["click_interval_ticks_mean"],
-        "live_only": ["click_interval_ms_mean"],
+        # Device signals (extension 1.5.3+) have no UB equivalent.
+        "live_only": [
+            "click_interval_ms_mean",
+            "coalesced_events_per_move",
+            "pointer_event_rate_hz",
+            "wheel_event_count",
+            "wheel_smooth_ratio",
+        ],
     }
     assert "click_interval_ticks_mean" in report["mouse_click_interval"]["ub_field"]
     assert report["mouse_click_interval"]["ub_timebase"] == [("unverified", None)]

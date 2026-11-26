@@ -65,6 +65,10 @@ class TelemetryRecord(Base):
     direction_changes_per_second: Mapped[float] = mapped_column(Float, nullable=False)
     straightness_ratio: Mapped[float | None] = mapped_column(Float, nullable=True)
     click_interval_ms_mean: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pointer_event_rate_hz: Mapped[float | None] = mapped_column(Float, nullable=True)
+    coalesced_events_per_move: Mapped[float | None] = mapped_column(Float, nullable=True)
+    wheel_event_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    wheel_smooth_ratio: Mapped[float | None] = mapped_column(Float, nullable=True)
     dwell_time_ms_mean: Mapped[float | None] = mapped_column(Float, nullable=True)
     dwell_time_ms_stddev: Mapped[float | None] = mapped_column(Float, nullable=True)
     pp_latency_ms_mean: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -185,6 +189,10 @@ def insert_telemetry(record: dict[str, Any], database_url: str | None = None) ->
         direction_changes_per_second=mouse["direction_changes_per_second"],
         straightness_ratio=mouse["straightness_ratio"],
         click_interval_ms_mean=mouse["click_interval_ms_mean"],
+        pointer_event_rate_hz=mouse.get("pointer_event_rate_hz"),
+        coalesced_events_per_move=mouse.get("coalesced_events_per_move"),
+        wheel_event_count=mouse.get("wheel_event_count"),
+        wheel_smooth_ratio=mouse.get("wheel_smooth_ratio"),
         dwell_time_ms_mean=keyboard["dwell_time_ms_mean"],
         dwell_time_ms_stddev=keyboard["dwell_time_ms_stddev"],
         pp_latency_ms_mean=keyboard["pp_latency_ms_mean"],
@@ -254,6 +262,10 @@ def _serialize(row: TelemetryRecord) -> dict[str, Any]:
             "direction_changes_per_second": row.direction_changes_per_second,
             "straightness_ratio": row.straightness_ratio,
             "click_interval_ms_mean": row.click_interval_ms_mean,
+            "pointer_event_rate_hz": row.pointer_event_rate_hz,
+            "coalesced_events_per_move": row.coalesced_events_per_move,
+            "wheel_event_count": row.wheel_event_count,
+            "wheel_smooth_ratio": row.wheel_smooth_ratio,
         },
         "keyboard_features": {
             "dwell_time_ms_mean": row.dwell_time_ms_mean,

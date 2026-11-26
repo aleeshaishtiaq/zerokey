@@ -3,11 +3,22 @@
 Both sources are turned into 15-second windows using the exact feature
 formulas of ``extension/content.js``, so UB and live rows mean the same thing.
 
-Outputs (in ``data/processed/training/``):
-    ub_keyboard_windows_clean.jsonl     ub_mouse_windows_clean.jsonl
-    live_keyboard_windows_clean.jsonl   live_mouse_windows_clean.jsonl
-    data_quality_report.json
-    *_windows_normalized.jsonl + normalization_params.json  (see below)
+Outputs (in ``data/processed/training/``), for each source (ub, live),
+modality (keyboard, mouse) and split (train, calibration, test):
+    <source>_<modality>_<split>_clean.jsonl
+    <source>_<modality>_<split>_normalized.jsonl
+plus live_mouse_device_signals.jsonl (extension 1.5.3+ only, see below),
+normalization_params.json and data_quality_report.json.
+
+Splits (chronological, so no future behaviour leaks into training):
+    UB    train = session 0 + first 60% of session 1, calibration = rest of
+          session 1, test = session 2 (recorded weeks later).
+    live  with --live-test-from (a later collection round, after a gap):
+          earlier windows = 75% train / 25% calibration, later round = test.
+          Without it (interim, until round 2 exists): per user and modality,
+          60% train / 20% calibration / 20% test, all in time order.
+Train is for fitting the models, calibration for thresholds and risk-state
+boundaries, test only for the final metrics.
 
 Rules applied identically to UB and live:
     * keyboard and mouse features are stored in separate files;
@@ -18,15 +29,33 @@ Rules applied identically to UB and live:
       MOUSE_FEATURES / KEYBOARD_FEATURES);
     * any row that still has a null, NaN or infinite value is dropped;
     * exact duplicate live rows are dropped;
+    * UB subjects with fewer than MIN_UB_MOUSE_WINDOWS_PER_SUBJECT mouse
+      windows are left out of the mouse files (their keyboard windows stay);
     * rows are ordered by subject, session, then window.
 
 UB and live data come from different screens, DPI settings and tasks, so the
 same person-independent feature (for example mouse speed) sits on a different
 scale in each source. The *_normalized files rescale every feature per source
 and per modality with a robust scaler, (value - median) / IQR, fitted on that
-source's own windows. After this, a typical window is around 0 in both
-sources and UB and live users can be trained and compared together. The
-fitted medians/IQRs are saved so new live windows are scaled the same way.
+source's own **train** windows and then applied to every split, so calibration
+and test data never influence it. After this, a typical window is around 0 in
+both sources. The fitted medians/IQRs are saved so new live windows are scaled
+the same way.
+
+Relative timing features (RELATIVE_KEYBOARD_FEATURES) are added to every
+keyboard window, UB and live alike. They are ratios of the absolute timings
+(spread / mean, and dwell or release-press time relative to press-press time),
+so they change less when a whole session gets faster or slower, for example on
+a different keyboard. Absolute features are kept, so training can compare
+"absolute only" with "absolute + relative".
+
+Device signals (pointer event rate, coalesced events per move, wheel event
+count, share of smooth wheel events) are raw input characteristics sent by
+extension 1.5.3+. They help training split one user's pointer data into
+profiles (touchpad, mouse, ...) without labelling the device. UB data and
+older live rows do not have them, so they are written to their own file,
+keyed by subject_id + session_id + window_index, and the clean files keep
+the same structure for UB and live.
 
 Only the Python standard library is used, so it runs anywhere:
     python -m src.data_pipeline.prepare_training_windows --live-file <export.csv|.jsonl>
@@ -41,7 +70,8 @@ import json
 import math
 import re
 from collections import Counter
-from datetime import datetime
+from collections import defaultdict
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable, Iterator
 
@@ -52,6 +82,14 @@ CLICK_GAP_MS = 2_000          # extension click interval limit
 UB_MOUSE_TICKS_PER_MS = 10_000  # .NET DateTime ticks (100 ns)
 MIN_KEYDOWNS = 2              # same minimum the live data implies (typing rate needs 2 presses)
 MIN_MOUSE_PATH_PX = 1.0       # mouse window must have actually moved
+# A UB subject needs this many mouse windows (all sessions together) for a
+# usable per-user mouse model; fewer leave only a handful of test windows.
+MIN_UB_MOUSE_WINDOWS_PER_SUBJECT = 60
+SPLITS = ("train", "calibration", "test")
+UB_SESSION1_TRAIN_FRACTION = 0.6   # rest of UB session 1 = calibration
+LIVE_SPLIT_INTERIM = (0.6, 0.2)    # no round 2 yet: train, calibration (rest = test)
+LIVE_SPLIT_WITH_ROUND2 = (0.75, 0.25)  # round 1 = train + calibration only
+PAKISTAN_TIME = timezone(timedelta(hours=5))
 
 KEYBOARD_FEATURES = [
     "dwell_time_ms_mean",
@@ -65,6 +103,14 @@ KEYBOARD_FEATURES = [
     "pause_duration_ms_mean",
     "rollover_ratio",
 ]
+# Derived from the features above (see relative_keyboard_features).
+RELATIVE_KEYBOARD_FEATURES = [
+    "dwell_time_cv",
+    "pp_latency_cv",
+    "rp_latency_cv",
+    "dwell_to_pp_ratio",
+    "rp_to_pp_ratio",
+]
 # inter_key_interval_ms_stddev is not used: the extension computes it from the
 # same list as pp_latency_ms_stddev, so the two columns are always identical.
 # click_interval_ms_mean is left out: it needs two clicks within 2 s inside one
@@ -75,6 +121,13 @@ MOUSE_FEATURES = [
     "average_velocity_px_per_second",
     "direction_changes_per_second",
     "straightness_ratio",
+]
+# Live only (extension 1.5.3+); written to live_mouse_device_signals.jsonl.
+DEVICE_SIGNAL_FEATURES = [
+    "pointer_event_rate_hz",
+    "coalesced_events_per_move",
+    "wheel_event_count",
+    "wheel_smooth_ratio",
 ]
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -258,7 +311,23 @@ def clean_keyboard(features: dict[str, Any]) -> tuple[dict[str, Any] | None, str
     if any(value < 0 for value in row.values()) or row["rollover_ratio"] > 1:
         return None, "out_of_range"
     row["pause_count"] = int(row["pause_count"])
+    row.update(relative_keyboard_features(row))
     return row, "kept"
+
+
+def _ratio(numerator: float, denominator: float) -> float:
+    return numerator / denominator if denominator > 0 else 0.0
+
+
+def relative_keyboard_features(row: dict[str, Any]) -> dict[str, float]:
+    """Timing ratios that are less sensitive to overall speed or keyboard model."""
+    return {
+        "dwell_time_cv": _ratio(row["dwell_time_ms_stddev"], row["dwell_time_ms_mean"]),
+        "pp_latency_cv": _ratio(row["pp_latency_ms_stddev"], row["pp_latency_ms_mean"]),
+        "rp_latency_cv": _ratio(row["rp_latency_ms_stddev"], row["rp_latency_ms_mean"]),
+        "dwell_to_pp_ratio": _ratio(row["dwell_time_ms_mean"], row["pp_latency_ms_mean"]),
+        "rp_to_pp_ratio": _ratio(row["rp_latency_ms_mean"], row["pp_latency_ms_mean"]),
+    }
 
 
 def clean_mouse(features: dict[str, Any]) -> tuple[dict[str, Any] | None, str]:
@@ -435,7 +504,8 @@ def read_live(path: Path) -> list[dict[str, Any]]:
                     "timestamp": row.get("timestamp"),
                     "keyboard_features": {k: _number(row.get(k)) for k in KEYBOARD_FEATURES},
                     "mouse_features": {
-                        k: _number(row.get(k)) for k in MOUSE_FEATURES + ["click_interval_ms_mean"]
+                        k: _number(row.get(k))
+                        for k in MOUSE_FEATURES + ["click_interval_ms_mean"] + DEVICE_SIGNAL_FEATURES
                     },
                 })
     else:
@@ -463,7 +533,8 @@ def _ub_order(row: dict[str, Any]) -> tuple:
     return row["subject_id"], row["session"], row["session_id"], row["window_index"]
 
 
-def live_rows(records: list[dict[str, Any]], report: Counter):
+def live_rows(records: list[dict[str, Any]], report: Counter,
+              test_from: datetime | None = None):
     usable = []
     seen = set()
     for record in records:
@@ -496,8 +567,9 @@ def live_rows(records: list[dict[str, Any]], report: Counter):
     session_number: dict[tuple[str, str], int] = {}
     per_user_sessions: Counter = Counter()
     window_counter: Counter = Counter()
-    keyboard, mouse = [], []
+    keyboard, mouse, signals = [], [], []
     for user, device, session_id, when, record in usable:
+        split = "test" if test_from is not None and when >= test_from else "round1"
         session_key = (user, session_id)
         if session_key not in session_start:
             session_start[session_key] = when
@@ -516,16 +588,111 @@ def live_rows(records: list[dict[str, Any]], report: Counter):
         )
         report[f"live_keyboard_{kb_reason}"] += 1
         if kb_row:
-            keyboard.append(window_record(modality="keyboard", features=kb_row, **common))
-        ms_row, ms_reason = clean_mouse(
-            {k: _number(v) for k, v in (record.get("mouse_features") or {}).items()}
-        )
+            keyboard.append(window_record(modality="keyboard", features=kb_row, **common)
+                            | {"split": split})
+        mouse_values = {k: _number(v) for k, v in (record.get("mouse_features") or {}).items()}
+        ms_row, ms_reason = clean_mouse(mouse_values)
         report[f"live_mouse_{ms_reason}"] += 1
         if ms_row:
-            mouse.append(window_record(modality="mouse", features=ms_row, **common))
+            mouse.append(window_record(modality="mouse", features=ms_row, **common)
+                         | {"split": split})
+            signal_row = device_signals(mouse_values)
+            report[f"live_device_signals_{'kept' if signal_row else 'missing'}"] += 1
+            if signal_row:
+                signals.append({
+                    key: common[key]
+                    for key in ("source", "subject_id", "user_id", "device_id",
+                                "session", "session_id", "window_index")
+                } | {"split": split, "device_signals": signal_row})
     keyboard.sort(key=_live_order)
     mouse.sort(key=_live_order)
-    return keyboard, mouse, subject_of
+    assign_live_splits(keyboard, has_round2=test_from is not None)
+    assign_live_splits(mouse, has_round2=test_from is not None)
+    mouse_split = {(r["subject_id"], r["session_id"], r["window_index"]): r["split"] for r in mouse}
+    for row in signals:
+        row["split"] = mouse_split[(row["subject_id"], row["session_id"], row["window_index"])]
+    signals.sort(key=_live_order)
+    return keyboard, mouse, signals, subject_of
+
+
+def assign_live_splits(rows: list[dict[str, Any]], has_round2: bool = False) -> list[dict[str, Any]]:
+    """Live split per user, in time order.
+
+    With a later round (rows already marked "test"): round 1 = 75% train /
+    25% calibration. Without one: 60% train / 20% calibration / 20% test.
+    ``rows`` must be in _live_order (time order within each user).
+    """
+    train_fraction, calibration_fraction = (
+        LIVE_SPLIT_WITH_ROUND2 if has_round2 else LIVE_SPLIT_INTERIM
+    )
+    round1: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        if row["split"] == "round1":
+            round1[row["subject_id"]].append(row)
+    for subject_rows in round1.values():
+        train_end = math.ceil(len(subject_rows) * train_fraction)
+        calibration_end = math.ceil(len(subject_rows) * (train_fraction + calibration_fraction))
+        for index, row in enumerate(subject_rows):
+            if index < train_end:
+                row["split"] = "train"
+            elif index < calibration_end:
+                row["split"] = "calibration"
+            else:
+                row["split"] = "test"
+    return rows
+
+
+def assign_ub_splits(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """UB: session 0 + first part of session 1 = train, rest of 1 = calibration, 2 = test.
+
+    ``rows`` must already be in _ub_order, so "first part" means earliest windows.
+    """
+    session1: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        if row["session"] == 0:
+            row["split"] = "train"
+        elif row["session"] == 2:
+            row["split"] = "test"
+        else:
+            session1[row["subject_id"]].append(row)
+    for subject_rows in session1.values():
+        cut = math.ceil(len(subject_rows) * UB_SESSION1_TRAIN_FRACTION)
+        for index, row in enumerate(subject_rows):
+            row["split"] = "train" if index < cut else "calibration"
+    return rows
+
+
+def device_signals(mouse_values: dict[str, Any]) -> dict[str, Any] | None:
+    """Device signals of one mouse window, or None for windows sent before 1.5.3.
+
+    The wheel ratio is undefined when nobody scrolled; it is set to -1 then,
+    so every row is complete and "no scrolling" stays distinguishable.
+    """
+    rate = mouse_values.get("pointer_event_rate_hz")
+    per_move = mouse_values.get("coalesced_events_per_move")
+    if not (_finite(rate) and _finite(per_move)) or rate <= 0 or per_move <= 0:
+        return None
+    wheel_count = mouse_values.get("wheel_event_count")
+    wheel_count = int(wheel_count) if _finite(wheel_count) and wheel_count >= 0 else 0
+    smooth = mouse_values.get("wheel_smooth_ratio")
+    smooth = float(smooth) if wheel_count > 0 and _finite(smooth) and 0 <= smooth <= 1 else -1.0
+    return {
+        "pointer_event_rate_hz": float(rate),
+        "coalesced_events_per_move": float(per_move),
+        "wheel_event_count": wheel_count,
+        "wheel_smooth_ratio": smooth,
+    }
+
+
+def drop_small_mouse_subjects(
+    rows: list[dict[str, Any]], report: Counter
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Remove UB subjects whose mouse data is too small for a per-user model."""
+    counts = Counter(row["subject_id"] for row in rows)
+    small = sorted(subject for subject, count in counts.items()
+                   if count < MIN_UB_MOUSE_WINDOWS_PER_SUBJECT)
+    report["ub_mouse_windows_dropped_small_subject"] += sum(counts[s] for s in small)
+    return [row for row in rows if row["subject_id"] not in small], small
 
 
 # --------------------------------------------------------------------------
@@ -548,13 +715,24 @@ def _quantile(sorted_values: list[float], fraction: float) -> float:
     return sorted_values[lower] + (sorted_values[upper] - sorted_values[lower]) * (position - lower)
 
 
-def normalize_file(source_path: Path, target_path: Path, modality: str) -> dict[str, Any]:
-    """Robust-scale one clean file and return the fitted parameters."""
-    rows = [json.loads(line) for line in source_path.open(encoding="utf-8")]
+def _read(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    with path.open(encoding="utf-8") as source:
+        return [json.loads(line) for line in source if line.strip()]
+
+
+def _feature_names(modality: str) -> list[str]:
+    if modality == "keyboard":
+        return KEYBOARD_FEATURES + RELATIVE_KEYBOARD_FEATURES
+    return MOUSE_FEATURES
+
+
+def fit_normalization(rows: list[dict[str, Any]], modality: str) -> dict[str, Any]:
+    """Robust (median / IQR) scaler fitted on the given (train) rows."""
     key = f"{modality}_features"
-    names = KEYBOARD_FEATURES if modality == "keyboard" else MOUSE_FEATURES
-    params: dict[str, Any] = {"rows_fitted": len(rows), "features": {}}
-    for name in names:
+    params: dict[str, Any] = {"rows_fitted": len(rows), "fitted_on": "train", "features": {}}
+    for name in _feature_names(modality):
         values = sorted(float(row[key][name]) for row in rows)
         median = _quantile(values, 0.5)
         iqr = _quantile(values, 0.75) - _quantile(values, 0.25)
@@ -562,15 +740,31 @@ def normalize_file(source_path: Path, target_path: Path, modality: str) -> dict[
             average = sum(values) / len(values)
             iqr = math.sqrt(sum((v - average) ** 2 for v in values) / len(values)) or 1.0
         params["features"][name] = {"median": median, "iqr": iqr}
+    return params
+
+
+def apply_normalization(
+    rows: list[dict[str, Any]], modality: str, params: dict[str, Any]
+) -> list[dict[str, Any]]:
+    key = f"{modality}_features"
+    scaled = []
     for row in rows:
+        row = dict(row)
         row[key] = {
             name: (float(row[key][name]) - params["features"][name]["median"])
             / params["features"][name]["iqr"]
-            for name in names
+            for name in _feature_names(modality)
         }
         row["dataset"] = f"{modality}_feature_window_normalized"
-    _write(target_path, rows)
-    return params
+        scaled.append(row)
+    return scaled
+
+
+def _write_splits(out: Path, name: str, rows: list[dict[str, Any]]) -> dict[str, int]:
+    return {
+        split: _write(out / f"{name}_{split}_clean.jsonl", [r for r in rows if r["split"] == split])
+        for split in SPLITS
+    }
 
 
 def _per_subject(path: Path) -> dict[str, int]:
@@ -595,43 +789,75 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--live-file", type=Path, help="Supabase CSV or NDJSON export (default: newest in data/raw/zerokey_captured)")
     parser.add_argument("--skip-ub", action="store_true", help="Only rebuild the live files.")
     parser.add_argument("--output-dir", type=Path, default=OUTPUT_DIR)
+    parser.add_argument(
+        "--live-test-from",
+        help="Date (YYYY-MM-DD, Pakistan time) when a later live collection "
+             "round started; all live windows from then on go to the test split.",
+    )
     args = parser.parse_args(argv)
+    test_from = None
+    if args.live_test_from:
+        test_from = datetime.fromisoformat(args.live_test_from)
+        if test_from.tzinfo is None:
+            test_from = test_from.replace(tzinfo=PAKISTAN_TIME)
 
     report: Counter = Counter()
     out = args.output_dir
     summary: dict[str, Any] = {
         "window_ms": WINDOW_MS,
         "keyboard_features": KEYBOARD_FEATURES,
+        "keyboard_relative_features": RELATIVE_KEYBOARD_FEATURES,
         "mouse_features": MOUSE_FEATURES,
         "min_keydowns_per_ub_window": MIN_KEYDOWNS,
+        "min_ub_mouse_windows_per_subject": MIN_UB_MOUSE_WINDOWS_PER_SUBJECT,
+        "splits": {
+            "ub": "train = session 0 + first 60% of session 1; calibration = rest of "
+                  "session 1; test = session 2",
+            "live": "with --live-test-from: earlier windows 75% train / 25% calibration, "
+                    "later round = test; without it: 60/20/20 in time order",
+            "live_test_from": test_from.isoformat() if test_from else None,
+        },
     }
 
     if not args.skip_ub:
         conditions = {path.stem: path.parent.name for path in UB_KEYSTROKE_ROOT.glob("s[0-2]/*/*.txt")}
-        summary["ub_keyboard_rows"] = _write(
-            out / "ub_keyboard_windows_clean.jsonl", sorted(ub_keyboard_rows(report), key=_ub_order)
+        summary["ub_keyboard_rows"] = _write_splits(
+            out, "ub_keyboard", assign_ub_splits(sorted(ub_keyboard_rows(report), key=_ub_order))
         )
-        summary["ub_mouse_rows"] = _write(
-            out / "ub_mouse_windows_clean.jsonl", sorted(ub_mouse_rows(report, conditions), key=_ub_order)
+        ub_mouse, small_subjects = drop_small_mouse_subjects(
+            list(ub_mouse_rows(report, conditions)), report
+        )
+        summary["ub_mouse_subjects_dropped_too_few_windows"] = small_subjects
+        summary["ub_mouse_rows"] = _write_splits(
+            out, "ub_mouse", assign_ub_splits(sorted(ub_mouse, key=_ub_order))
         )
 
     live_path = args.live_file or _latest_live_file()
     if live_path is not None:
-        keyboard, mouse, subjects = live_rows(read_live(live_path), report)
+        keyboard, mouse, signals, subjects = live_rows(read_live(live_path), report, test_from)
         summary["live_source_file"] = str(live_path)
         summary["live_subjects"] = subjects
-        summary["live_keyboard_rows"] = _write(out / "live_keyboard_windows_clean.jsonl", keyboard)
-        summary["live_mouse_rows"] = _write(out / "live_mouse_windows_clean.jsonl", mouse)
+        summary["live_keyboard_rows"] = _write_splits(out, "live_keyboard", keyboard)
+        summary["live_mouse_rows"] = _write_splits(out, "live_mouse", mouse)
+        summary["live_device_signal_rows"] = _write(out / "live_mouse_device_signals.jsonl", signals)
 
+    normalization: dict[str, Any] = {
+        "method": "robust (value - median) / IQR, per source and modality, fitted on train only"
+    }
     for name in ("ub_keyboard", "ub_mouse", "live_keyboard", "live_mouse"):
-        summary[f"{name}_windows_per_subject"] = _per_subject(out / f"{name}_windows_clean.jsonl")
-    normalization: dict[str, Any] = {"method": "robust (value - median) / IQR, per source and modality"}
-    for name in ("ub_keyboard", "ub_mouse", "live_keyboard", "live_mouse"):
-        clean_path = out / f"{name}_windows_clean.jsonl"
-        if clean_path.exists() and clean_path.stat().st_size:
-            normalization[name] = normalize_file(
-                clean_path, out / f"{name}_windows_normalized.jsonl", name.split("_")[1]
-            )
+        modality = name.split("_")[1]
+        summary[f"{name}_windows_per_subject"] = {
+            split: _per_subject(out / f"{name}_{split}_clean.jsonl") for split in SPLITS
+        }
+        train = _read(out / f"{name}_train_clean.jsonl")
+        if not train:
+            continue
+        params = fit_normalization(train, modality)
+        normalization[name] = params
+        for split in SPLITS:
+            rows = train if split == "train" else _read(out / f"{name}_{split}_clean.jsonl")
+            _write(out / f"{name}_{split}_normalized.jsonl",
+                   apply_normalization(rows, modality, params))
     (out / "normalization_params.json").write_text(json.dumps(normalization, indent=2), encoding="utf-8")
     summary["cleaning_counts"] = dict(sorted(report.items()))
     (out / "data_quality_report.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")

@@ -69,14 +69,83 @@ Portal, dashboard and extension all call the deployed API, not a local one.
 - `inter_key_interval_ms_stddev` always equals `pp_latency_ms_stddev`; it is
   excluded from training. `click_interval_ms_mean` is excluded too (almost
   always undefined in a 15 s window).
-- Browsers report a touchpad as `pointerType = "mouse"`; it cannot be told apart
-  from a mouse without extra logic.
+- Browsers report a touchpad as `pointerType = "mouse"`; there is no reliable way
+  to tell them apart. ZeroKey does **not** label the device: extension 1.5.3+
+  sends device signals in `mouse_features` (`pointer_event_rate_hz`,
+  `coalesced_events_per_move`, `wheel_event_count`, `wheel_smooth_ratio`) and
+  training builds several input profiles per user. See
+  `docs/input-profiles-design.md`.
+- The API forbids unknown fields. When the extension sends a new field, deploy
+  the API first, then reload the extension.
 
 ## Training data
 `python -m src.data_pipeline.prepare_training_windows --live-file data\raw\zerokey_captured\telemetry_records_rows.csv`
-builds, in `data/processed/training/`: separate UB and live keyboard/mouse
-`*_windows_clean.jsonl` (same structure and order, no nulls, no IP),
-`*_windows_normalized.jsonl` (per-source median/IQR scaling so UB and live can
-be used together), `normalization_params.json` and `data_quality_report.json`
-(windows per user). Live users are relabelled `L01`, `L02`, ... by sorted user
-ID; the real ID stays in `user_id`.
+(add `--live-test-from YYYY-MM-DD` once a later live round exists) builds, in
+`data/processed/training/`, for each source (`ub`, `live`), modality
+(`keyboard`, `mouse`) and split (`train`, `calibration`, `test`):
+`<source>_<modality>_<split>_clean.jsonl` and `..._normalized.jsonl`, plus
+`live_mouse_device_signals.jsonl` (1.5.3+ windows only),
+`normalization_params.json` and `data_quality_report.json` (windows per user
+per split). No nulls, no IP, no window in two splits.
+- Keyboard windows: 10 absolute + 5 relative timing features. Mouse: 5.
+- UB subjects with < 60 mouse windows (021, 049, 127) are left out of the mouse
+  files; their keyboard windows stay.
+- Splits are chronological. UB: train = session 0 + first 60% of session 1,
+  calibration = rest of session 1, test = session 2. Live (planned): the
+  23-26 Nov data = 75% train / 25% calibration, and a second collection round
+  after a gap = test (`--live-test-from <first day of round 2>`). Until round 2
+  exists, live uses an interim 60% / 20% / 20% split in time order, so the
+  training code can be built and checked; final live results use round 2.
+- Normalized files use a median/IQR scaler fitted on the **train** split only.
+- Live users are relabelled `L01`, `L02`, ... by sorted user ID; the real ID
+  stays in `user_id`.
+- The UB folders are large; if the run is slow on a mounted drive, copy them
+  to a local disk first.
+- `data/` is gitignored. Training data is shared as a zip outside git.
+
+## Model training (Azka)
+Plan: 3 one-class models per user and modality, compared, best one selected.
+1. **Models:** One-Class SVM, Isolation Forest, Autoencoder (LOF if the
+   autoencoder runs out of time).
+2. **Micro model = per user, per modality.** Each user gets a keyboard model
+   and a mouse model, trained only on that user's `train` windows. A user
+   without mouse data (UB 021, 049, 127) gets a keyboard model only; that is
+   expected (like a new employee whose mouse is not enrolled yet), not an
+   error. Leave them out of the mouse averages only.
+3. **Splits:** fit models on `train`; choose thresholds and risk-state
+   boundaries on `calibration`; report final EER / FAR / FRR / AUC on `test`
+   only. Never tune on `test`.
+4. **Scaling:** either fit a scaler per user on that user's `train` clean
+   windows, or use the `_normalized` files (already fitted on train). Never fit
+   anything on calibration or test.
+5. **Impostors:** other users' windows from the **same source and split**
+   (UB vs UB, live vs live). Never use UB windows as impostors for live users.
+6. **Features:** run every model twice for keyboard: 10 absolute features
+   only, and all 15 (absolute + relative). Report both; keep the better set.
+7. **Fusion:** live keyboard and mouse rows of the same window share
+   `session_id` + `window_index`; fuse scores only where both exist in the same
+   split. UB keyboard and mouse are separate recordings: report them per
+   modality.
+8. **Main results come from UB** (148 users). Live (2 users) shows that the
+   same pipeline works on ZeroKey's own data.
+9. **Live test data:** final live results must come from a **second
+   collection round** (Areeba and Aleesha, after a 2-3 day gap; one week is
+   better). When Azka's training code is ready, she tells the team that live
+   round 2 is needed; after it is collected, export again and rerun the
+   pipeline with `--live-test-from <first day of round 2>`. Until then the
+   live test split is only an interim check (last 20% of 23-26 Nov). Note in
+   the report that the live gap is shorter than UB's (about 4 weeks), so live
+   results may look a little better than UB results.
+10. Document training configs, logs, metrics, and limitations as Iteration 2
+    evidence.
+
+## Risk decision contract (until the Shadow Environment exists)
+The Shadow Environment is built later. Until then, any component that maps a
+score to a risk state must still **decide and record** the action:
+- Output for every scored window: `risk_state` (CONTINUE / MONITOR / STEP_UP /
+  LOSS_OF_PRIVILEGES / TERMINATE / SHADOW), the score(s) used, the threshold
+  that was crossed, and a short `reason`.
+- When the state is `SHADOW`, log `decision = "SHADOW"` with its reason and
+  return `action_status = "not_implemented"` (no redirect yet). The redirect
+  is wired in when the Shadow Environment is built; the decision logic does
+  not change then.
