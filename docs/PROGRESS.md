@@ -1,7 +1,7 @@
 # ZeroKey progress log
 
 Newest entry first. Every chat adds an entry here at the end of its task
-(see `CLAUDE.md`). Keep entries short: who, what, what is still open.
+(see `AGENTS.md`). Keep entries short: who, what, what is still open.
 
 ## Open items
 - [ ] **Deploy order for extension 1.5.3:** merge the device-signals PR into
@@ -11,7 +11,7 @@ Newest entry first. Every chat adds an entry here at the end of its task
 - [ ] Model training (Azka): 3 one-class models (One-Class SVM, Isolation
   Forest, Autoencoder) per user and modality on the `train` split, thresholds
   on `calibration`, final metrics on `test`; compare and pick the best. Rules
-  in `CLAUDE.md` > "Model training (Azka)". Input-profile clustering comes
+  in `AGENTS.md` > "Model training (Azka)". Input-profile clustering comes
   later (see `docs/input-profiles-design.md`).
 - [ ] Live round 2 (Areeba, Aleesha) for the final live **test** split: collect
   after a 2-3 day gap (one week better), when Azka says her training code is
@@ -87,7 +87,7 @@ training data.
   round 1 = 75/25 train/calibration and round 2 = test). The normalization
   scaler is fitted on
   train only. Azka's instructions and the risk-decision contract (SHADOW is
-  decided and logged, redirect not implemented yet) are in `CLAUDE.md`.
+  decided and logged, redirect not implemented yet) are in `AGENTS.md`.
 - Rebuilt `data/processed/training/` from the 26 Nov export: UB 62,592 keyboard
   windows (148 users, sessions 0-2) / 16,587 mouse windows (145 users), live
   542 keyboard / 403 mouse windows; no nulls, no IP, no duplicates. Sent to
@@ -112,4 +112,4 @@ training data.
   1.5.2 fixed it.
 - Not committed on purpose: Cursor debug logging in `extension/background.js`
   (left in the local stash).
-- Added this file and `CLAUDE.md`.
+- Added this file and `AGENTS.md`.
