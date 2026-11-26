@@ -70,6 +70,11 @@ class MouseFeatures(FeatureModel):
     direction_changes_per_second: float = Field(ge=0)
     straightness_ratio: float | None = Field(default=None, ge=0, le=1)
     click_interval_ms_mean: float | None = Field(default=None, ge=0)
+    # Device signals (extension 1.5.3+). Optional so older extensions still work.
+    pointer_event_rate_hz: float | None = Field(default=None, ge=0)
+    coalesced_events_per_move: float | None = Field(default=None, ge=0)
+    wheel_event_count: int | None = Field(default=None, ge=0)
+    wheel_smooth_ratio: float | None = Field(default=None, ge=0, le=1)
 
 
 class KeyboardFeatures(FeatureModel):

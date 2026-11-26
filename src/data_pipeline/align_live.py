@@ -17,6 +17,13 @@ from pydantic import ValidationError
 from src.api.routes import TelemetryPayload
 from .features import BehavioralFeatureSummary
 
+DEVICE_SIGNAL_FEATURES = (
+    "pointer_event_rate_hz",
+    "coalesced_events_per_move",
+    "wheel_event_count",
+    "wheel_smooth_ratio",
+)
+
 DEFAULT_LIVE_PATH = Path("data/raw/zerokey_captured/telemetry_log.jsonl")
 DEFAULT_OUTPUT_PATH = Path("data/processed/telemetry_log_ub_aligned.jsonl")
 DEFAULT_UB_DIRECTORY = Path("data/processed")
@@ -179,6 +186,9 @@ def align_records(
         )
 
         mouse_features = payload.mouse_features.model_dump(mode="json")
+        # Device signals have no UB equivalent, so they are not part of the UB schema.
+        for name in DEVICE_SIGNAL_FEATURES:
+            mouse_features.pop(name, None)
         click_interval_ms = mouse_features.pop("click_interval_ms_mean")
         mouse_features["click_interval_ticks_mean"] = (
             None
