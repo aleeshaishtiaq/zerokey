@@ -233,3 +233,6 @@ data/processed/*
 telemetry_log.jsonl
 ```
 .vercel
+
+# Output of scripts/run_tests.bat
+scripts/test_output.txt

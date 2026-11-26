@@ -13,10 +13,15 @@ from sqlalchemy import (
     Text,
     Uuid,
     create_engine,
+    func,
+    inspect,
     select,
+    text,
 )
 from sqlalchemy.dialects.postgresql import INET
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
+from sqlalchemy.pool import NullPool
 from sqlalchemy.types import TypeDecorator
 
 
@@ -79,6 +84,7 @@ class TelemetryRecord(Base):
 
 
 _engines: dict[str, Any] = {}
+_initialized_urls: set[str] = set()
 
 
 def database_configured(database_url: str | None = None) -> bool:
@@ -87,11 +93,29 @@ def database_configured(database_url: str | None = None) -> bool:
 
 
 def get_database_url(database_url: str | None = None) -> str:
+    """Normalise DATABASE_URL so any Postgres/Supabase string works as pasted.
+
+    Accepts ``postgres://``, ``postgresql://`` and ``postgresql+psycopg2://``
+    URLs, strips surrounding quotes/whitespace, and adds ``sslmode=require``
+    for hosted Postgres (Supabase, Neon, ...) when no sslmode is given.
+    """
     url = (database_url if database_url is not None else os.getenv("DATABASE_URL", "")).strip()
+    if len(url) >= 2 and url[0] == url[-1] and url[0] in {'"', "'"}:
+        url = url[1:-1].strip()
     if url.startswith("postgres://"):
         url = "postgresql://" + url[len("postgres://"):]
-    if url.startswith("postgresql://") and "+psycopg" not in url:
+    if url.startswith("postgresql://"):
         url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
+    if url.startswith("postgresql") and "sslmode=" not in url:
+        try:
+            host = (make_url(url).host or "").lower()
+        except Exception as error:
+            raise ValueError(
+                "DATABASE_URL could not be parsed. URL-encode special characters "
+                "in the password (for example @ -> %40, # -> %23)."
+            ) from error
+        if host and host not in {"localhost", "127.0.0.1", "::1", "db"}:
+            url += ("&" if "?" in url else "?") + "sslmode=require"
     return url
 
 
@@ -101,14 +125,43 @@ def get_engine(database_url: str | None = None):
         raise ValueError("DATABASE_URL is not configured.")
     engine = _engines.get(url)
     if engine is None:
-        engine = create_engine(url, pool_pre_ping=True)
+        options: dict[str, Any] = {"pool_pre_ping": True}
+        if url.startswith("postgresql"):
+            options["connect_args"] = {"connect_timeout": 10}
+            # Serverless functions (Vercel) are frozen between requests, so a
+            # pooled connection is often dead by the next call. Supabase's own
+            # pooler already does the pooling for us.
+            if os.getenv("VERCEL"):
+                options["poolclass"] = NullPool
+        engine = create_engine(url, **options)
         _engines[url] = engine
     return engine
 
 
 def initialize_database(database_url: str | None = None) -> None:
-    engine = get_engine(database_url)
+    """Create the table once per process and add any columns that are missing.
+
+    ``create_all`` never alters an existing table, so a table created by an
+    older version of this code could be missing newer columns (for example
+    ``public_ip_address``) and every insert would fail. This repairs that.
+    """
+    url = get_database_url(database_url)
+    if url in _initialized_urls:
+        return
+    engine = get_engine(url)
     Base.metadata.create_all(engine)
+
+    table = TelemetryRecord.__table__
+    existing = {column["name"] for column in inspect(engine).get_columns(table.name)}
+    missing = [column for column in table.columns if column.name not in existing]
+    if missing:
+        with engine.begin() as connection:
+            for column in missing:
+                column_type = column.type.compile(dialect=engine.dialect)
+                connection.execute(
+                    text(f'ALTER TABLE {table.name} ADD COLUMN {column.name} {column_type}')
+                )
+    _initialized_urls.add(url)
 
 
 def insert_telemetry(record: dict[str, Any], database_url: str | None = None) -> None:
@@ -157,7 +210,21 @@ def list_telemetry(limit: int, database_url: str | None = None) -> list[dict[str
             .order_by(TelemetryRecord.id.desc())
             .limit(limit)
         ).all()
-    return [_serialize(row) for row in reversed(rows)]
+    # Newest first, matching the JSONL fallback and what the dashboard expects.
+    return [_serialize(row) for row in rows]
+
+
+def telemetry_status(database_url: str | None = None) -> dict[str, Any]:
+    initialize_database(database_url)
+    with Session(get_engine(database_url)) as session:
+        total = session.scalar(select(func.count()).select_from(TelemetryRecord)) or 0
+        latest = session.scalar(select(func.max(TelemetryRecord.timestamp)))
+    if latest is not None and latest.tzinfo is None:
+        latest = latest.replace(tzinfo=timezone.utc)
+    return {
+        "record_count": int(total),
+        "latest_timestamp": latest.isoformat() if latest else None,
+    }
 
 
 def export_telemetry(database_url: str | None = None) -> list[dict[str, Any]]:

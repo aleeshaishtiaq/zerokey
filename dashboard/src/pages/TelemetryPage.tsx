@@ -32,7 +32,9 @@ export function TelemetryPage() {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
       if (!response.ok) {
-        throw new Error(`Telemetry API returned HTTP ${response.status}.`);
+        const body = (await response.json().catch(() => null)) as { detail?: unknown } | null;
+        const detail = typeof body?.detail === 'string' ? ` ${body.detail}` : '';
+        throw new Error(`Telemetry API returned HTTP ${response.status}.${detail}`);
       }
       const recentRecords = (await response.json()) as TelemetryRecord[];
       setRecords(recentRecords);
@@ -91,7 +93,7 @@ export function TelemetryPage() {
                 <th className="px-4 py-3">Device ID (SHA-256)</th>
                 <th className="px-4 py-3">Session ID</th>
                 <th className="px-4 py-3">Timestamp</th>
-                <th className="px-4 py-3">Public IP (ipify)</th>
+                <th className="px-4 py-3">Session IP</th>
                 <th className="px-4 py-3">Mouse features</th>
                 <th className="px-4 py-3">Keyboard features</th>
               </tr>

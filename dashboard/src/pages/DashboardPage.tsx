@@ -73,7 +73,9 @@ export function DashboardPage() {
           headers: { Authorization: `Bearer ${accessToken}` },
         });
         if (!response.ok) {
-          throw new Error(`Telemetry API returned HTTP ${response.status}.`);
+          const body = (await response.json().catch(() => null)) as { detail?: unknown } | null;
+          const detail = typeof body?.detail === 'string' ? ` ${body.detail}` : '';
+          throw new Error(`Telemetry API returned HTTP ${response.status}.${detail}`);
         }
         const records = (await response.json()) as RecentTelemetryRecord[];
         if (active) {
@@ -130,7 +132,7 @@ export function DashboardPage() {
                       <th className="px-5 py-3 sm:px-6">Device ID (SHA-256)</th>
                       <th className="px-5 py-3">Session ID</th>
                       <th className="px-5 py-3">Timestamp</th>
-                      <th className="px-5 py-3">Public IP (ipify)</th>
+                      <th className="px-5 py-3">Session IP</th>
                       <th className="px-5 py-3">Mouse features</th>
                       <th className="px-5 py-3 sm:px-6">Keyboard features</th>
                     </tr>
