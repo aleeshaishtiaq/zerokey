@@ -27,9 +27,21 @@ RELATIVE_KEYBOARD_FEATURES = (
     "dwell_to_pp_ratio",
     "rp_to_pp_ratio",
 )
+# Feature set v2 (zip v5 onwards, UB only for now; live gets them with a new
+# extension version).
+KEYBOARD_V2_FEATURES = (
+    "backspace_rate",
+    "dwell_time_ms_median",
+    "pp_latency_ms_median",
+    "rp_latency_ms_median",
+    "rr_latency_ms_mean",
+    "rr_latency_ms_median",
+)
 KEYBOARD_FEATURE_SETS = {
     "abs10": ABSOLUTE_KEYBOARD_FEATURES,
     "all15": ABSOLUTE_KEYBOARD_FEATURES + RELATIVE_KEYBOARD_FEATURES,
+    "abs10_v2": ABSOLUTE_KEYBOARD_FEATURES + KEYBOARD_V2_FEATURES,
+    "all21": ABSOLUTE_KEYBOARD_FEATURES + RELATIVE_KEYBOARD_FEATURES + KEYBOARD_V2_FEATURES,
 }
 MOUSE_FEATURES = (
     "path_length_px",
@@ -38,7 +50,22 @@ MOUSE_FEATURES = (
     "direction_changes_per_second",
     "straightness_ratio",
 )
-MOUSE_FEATURE_SETS = {"mouse5": MOUSE_FEATURES}
+MOUSE_V2_FEATURES = (
+    "speed_px_per_second_std",
+    "speed_px_per_second_median",
+    "speed_px_per_second_p90",
+    "acceleration_px_per_second2_mean",
+    "acceleration_px_per_second2_std",
+    "acceleration_px_per_second2_p90",
+    "jerk_px_per_second3_mean",
+    "jerk_px_per_second3_median",
+    "jerk_px_per_second3_p90",
+    "right_click_count",
+)
+MOUSE_FEATURE_SETS = {
+    "mouse5": MOUSE_FEATURES,
+    "mouse15": MOUSE_FEATURES + MOUSE_V2_FEATURES,
+}
 FEATURE_SETS = {"keyboard": KEYBOARD_FEATURE_SETS, "mouse": MOUSE_FEATURE_SETS}
 
 
