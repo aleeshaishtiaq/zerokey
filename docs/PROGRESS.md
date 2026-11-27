@@ -14,8 +14,11 @@ Newest entry first. Every chat adds an entry here at the end of its task
   in `AGENTS.md` > "Model training (Azka)". Input-profile clustering comes
   later (see `docs/input-profiles-design.md`). Steps 1-2 (UB keyboard, UB
   mouse) done on 27 Nov; live and fusion still open.
-- [ ] **Feature set v2 (Areeba):** redo the preprocessing with extra features
-  built from the same raw UB data, then send Azka training data zip v5.
+- [ ] **Feature set v2 (Areeba):** UB part **done 27 Nov** (zip v5 sent to
+  Azka). Next: Azka compares v1 vs v2 on UB; **only if v2 helps**, add the
+  same features to the API and the extension and collect a new live round 1
+  (one day, 2-3 sessions; only the modality that improved), then rebuild
+  with `--live-from <first day of the new round>`.
   Keep every current feature, so old and new results can be compared.
   - Mouse: speed std / median / p90, acceleration (mean, std, p90), jerk
     (mean, median, p90), right-click count. In the 27 Nov test these were the
@@ -51,6 +54,34 @@ rows on Aleesha's device ID) was saved under Areeba's account, so it is valid
 training data.
 
 ## Log
+
+### 2026-11-27 (night) — Areeba
+- Feature set v2 in `prepare_training_windows.py` (UB), added next to every
+  existing feature:
+  - Keyboard (6): `backspace_rate` (count only; UB key `Back`, browser
+    `Backspace`), `dwell_time_ms_median`, `pp_latency_ms_median`,
+    `rp_latency_ms_median`, `rr_latency_ms_mean`, `rr_latency_ms_median`
+    (release-release, consecutive releases under 500 ms).
+  - Mouse (10): speed std / median / p90, acceleration mean / std / p90, jerk
+    mean / median / p90 (from consecutive movement samples inside a burst;
+    acceleration and jerk are absolute changes per second), and
+    `right_click_count` (UB `| Right | Click`).
+  - A v2 value that cannot be computed in a window is 0.0 (counted in the
+    report): ~1.8% of UB mouse windows (jerk), 0.06% of UB keyboard windows.
+    No window is dropped; every v1 value is identical to v4 (checked).
+  - Live: rows without v2 keep the v1 schema; if old and new live rows are
+    mixed, v2 is left out of that file. New option `--live-from <date>` keeps
+    only live windows from that date on (for a new live round with the v2
+    extension).
+- UB mouse is sampled every ~15.6 ms; UB keyboard timestamps also move in
+  ~15.6 ms steps, so many timing values repeat (property of the raw data).
+- Tests: `tests/test_feature_set_v2.py`; full suite 77 passed (including the
+  training tests with scikit-learn).
+- Training data zip **v5** for Azka (`zerokey_training_data_v5.zip`): same
+  windows and splits as v4; UB keyboard 21 features, UB mouse 15; live
+  unchanged. Azka adds the v2 feature-set names to `src/training/data.py`.
+- Not done yet (waits for Azka's v1 vs v2 result): v2 in the API and the
+  extension, new live round.
 
 ### 2026-11-27 — Azka
 - Model training, step 1 (UB keyboard only), on branch `feature/model-training`:

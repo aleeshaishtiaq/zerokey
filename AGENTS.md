@@ -110,13 +110,17 @@ per split). No nulls, no IP, no window in two splits.
 - The UB folders are large; if the run is slow on a mounted drive, copy them
   to a local disk first.
 - `data/` is gitignored. Training data is shared as a zip outside git.
-- **Planned: feature set v2 (Areeba).** Extra features from the same raw data,
-  added next to the current ones (nothing removed). Mouse: speed std / median
-  / p90, acceleration (mean, std, p90), jerk (mean, median, p90), right-click
-  count. Keyboard: backspace rate (count only, no key text), median timings,
-  release-release latency. UB pipeline, extension and API must produce the
-  same features; deploy the API before reloading the extension. Details and
-  the test behind this list: `docs/PROGRESS.md` (27 Nov, Azka).
+- **Feature set v2** (`V2_KEYBOARD_FEATURES`, `V2_MOUSE_FEATURES` in
+  `prepare_training_windows.py`) is added next to the earlier features
+  (nothing removed, no window dropped). Keyboard: backspace rate (count only,
+  no key text), median dwell / press-press / release-press, release-release
+  mean and median. Mouse: speed std / median / p90, acceleration mean / std /
+  p90, jerk mean / median / p90, right-click count. Done for UB (27 Nov).
+  Live rows from the old extension have no v2; a live file only carries v2
+  when every window has it, and `--live-from <date>` keeps only newer live
+  windows. If v2 helps on UB, the extension and API must compute the same
+  values with the same formulas; deploy the API before reloading the
+  extension.
 - Raw UB mouse files contain the lab computer name, user name and IP address.
   Keep raw data in `data/raw/` only.
 
