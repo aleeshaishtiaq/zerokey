@@ -7,10 +7,10 @@ import pytest
 np = pytest.importorskip("numpy")
 pytest.importorskip("sklearn")
 
-from src.training.data import KEYBOARD_FEATURE_SETS, load_split  # noqa: E402
+from src.training.data import KEYBOARD_FEATURE_SETS, MOUSE_FEATURES, load_split  # noqa: E402
 from src.training.metrics import auc, eer, far_frr  # noqa: E402
 from src.training.models import MODEL_NAMES, UserModel, autoencoder_layers  # noqa: E402
-from src.training.train_ub_keyboard import evaluate_user, run  # noqa: E402
+from src.training.train_ub import evaluate_user, parse_args, run  # noqa: E402
 
 
 def test_metrics_on_perfectly_separated_scores():
@@ -64,16 +64,16 @@ def test_unknown_model_is_rejected():
         UserModel("knn")
 
 
-def write_split(directory, split, users, rng):
-    features = KEYBOARD_FEATURE_SETS["all15"]
-    path = directory / f"ub_keyboard_{split}_clean.jsonl"
+def write_split(directory, split, users, rng, modality="keyboard"):
+    features = KEYBOARD_FEATURE_SETS["all15"] if modality == "keyboard" else MOUSE_FEATURES
+    path = directory / f"ub_{modality}_{split}_clean.jsonl"
     with open(path, "w", encoding="utf-8") as handle:
         for index, user in enumerate(users):
             for _ in range(30):
                 values = rng.normal(index * 5.0, 1.0, size=len(features))
                 row = {
                     "user_id": user,
-                    "keyboard_features": dict(zip(features, values.tolist())),
+                    f"{modality}_features": dict(zip(features, values.tolist())),
                 }
                 handle.write(json.dumps(row) + "\n")
 
@@ -101,3 +101,29 @@ def test_run_uses_other_users_as_impostors_and_writes_outputs(tmp_path):
     row = evaluate_user("ocsvm", "001", splits)
     assert row["test_genuine"] == 30
     assert row["test_impostor"] == 60
+
+
+def test_mouse_run_only_models_users_with_train_windows(tmp_path):
+    rng = np.random.default_rng(2)
+    write_split(tmp_path, "train", ["001", "002", "003"], rng, "mouse")
+    for split in ("calibration", "test"):
+        # "004" has no train windows (like UB 021, 049, 127): no model, not an impostor.
+        write_split(tmp_path, split, ["001", "002", "003", "004"], rng, "mouse")
+    output = tmp_path / "out"
+
+    summaries = run(tmp_path, output, ["ocsvm"], ["mouse5"], modality="mouse")
+
+    assert summaries[0]["users"] == 3
+    config = json.loads((output / "config.json").read_text(encoding="utf-8"))
+    assert config["modality"] == "mouse"
+    assert config["autoencoder_layers"]["mouse5"] == [3, 2, 3]
+    lines = (output / "per_user_metrics.csv").read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 4
+    assert all(",60," in line for line in lines[1:])  # 2 other users x 30 impostor windows
+
+
+def test_feature_sets_default_to_the_modality():
+    assert parse_args(["--modality", "mouse"]).feature_sets == ["mouse5"]
+    assert parse_args(["--modality", "keyboard"]).feature_sets == ["abs10", "all15"]
+    with pytest.raises(SystemExit):
+        parse_args(["--modality", "mouse", "--feature-sets", "abs10"])
