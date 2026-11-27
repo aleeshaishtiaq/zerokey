@@ -61,6 +61,15 @@ value that cannot be computed in a window is set to 0 and counted in the
 report. Live rows sent before the v2 extension have no v2 values; a live file
 only carries v2 when every window has it (see --live-from).
 
+Mouse v3 (V3_MOUSE_FEATURES) adds per-stroke ("action") features: a stroke
+is a run of movement samples with no pause over STROKE_GAP_MS, and a click
+stroke ends with a left click within CLICK_AFTER_STROKE_MS. For every window:
+number of strokes, median duration / length / efficiency / deviation /
+curvature / peak speed / time-to-peak, share of sideways strokes, share of
+click strokes and median pause before the click. A window without strokes has
+stroke_count = 0 and its other v3 values are 0 (counted in the report), so
+training can require a minimum stroke_count.
+
 Device signals (pointer event rate, coalesced events per move, wheel event
 count, share of smooth wheel events) are raw input characteristics sent by
 extension 1.5.3+. They help training split one user's pointer data into
@@ -138,6 +147,27 @@ V2_MOUSE_FEATURES = [
     "right_click_count",
 ]
 BACKSPACE_KEYS = {"Back", "Backspace"}  # UB virtual-key name, browser KeyboardEvent.key
+# Mouse v3: per-stroke ("action") features, summarised per window. A stroke is
+# a run of movement samples with no pause longer than STROKE_GAP_MS; it is a
+# click stroke when a left click follows within CLICK_AFTER_STROKE_MS.
+STROKE_GAP_MS = 300
+MIN_STROKE_SAMPLES = 4
+MIN_STROKE_PX = 10.0
+CLICK_AFTER_STROKE_MS = 1_000
+V3_MOUSE_FEATURES = [
+    "stroke_count",
+    "stroke_duration_ms_median",
+    "stroke_length_px_median",
+    "stroke_efficiency_mean",            # displacement / path, 1 = straight
+    "stroke_efficiency_median",
+    "stroke_deviation_ratio_median",     # largest distance from the straight line / path
+    "stroke_curvature_rad_per_px_median",
+    "stroke_peak_speed_px_per_second_median",
+    "stroke_time_to_peak_ratio_median",  # 0 = fastest at the start, 1 = at the end
+    "stroke_horizontal_share",           # strokes that move more sideways than up/down
+    "click_stroke_share",                # strokes that end in a click
+    "pause_before_click_ms_median",
+]
 # Derived from the features above (see relative_keyboard_features).
 RELATIVE_KEYBOARD_FEATURES = [
     "dwell_time_cv",
@@ -276,6 +306,76 @@ class KeyboardWindow:
         }
 
 
+def summarize_stroke(points: list[tuple[float, float, float]]) -> dict[str, Any] | None:
+    """Shape and timing of one stroke; None if it is too short to describe."""
+    if len(points) < MIN_STROKE_SAMPLES:
+        return None
+    lengths = [math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(points, points[1:])]
+    path = sum(lengths)
+    duration = points[-1][2] - points[0][2]
+    if path < MIN_STROKE_PX or duration <= 0:
+        return None
+    dx, dy = points[-1][0] - points[0][0], points[-1][1] - points[0][1]
+    displacement = math.hypot(dx, dy)
+    deviation = 0.0
+    if displacement > 0:
+        for x, y, _ in points[1:-1]:
+            # distance of the point from the straight start-end line
+            cross = abs(dx * (y - points[0][1]) - dy * (x - points[0][0]))
+            deviation = max(deviation, cross / displacement)
+    turning = 0.0
+    previous_angle = None
+    peak_speed, peak_at = 0.0, points[0][2]
+    for (a, b), length in zip(zip(points, points[1:]), lengths):
+        if length <= 0:
+            continue
+        angle = math.atan2(b[1] - a[1], b[0] - a[0])
+        if previous_angle is not None:
+            change = abs(angle - previous_angle)
+            turning += 2 * math.pi - change if change > math.pi else change
+        previous_angle = angle
+        elapsed = b[2] - a[2]
+        if elapsed > 0 and length / elapsed * 1000 > peak_speed:
+            peak_speed, peak_at = length / elapsed * 1000, b[2]
+    return {
+        "end": points[-1][2],
+        "duration": duration,
+        "length": path,
+        "efficiency": min(1.0, displacement / path),
+        "deviation": deviation / path,
+        "curvature": turning / path,
+        "peak_speed": peak_speed,
+        "time_to_peak": (peak_at - points[0][2]) / duration,
+        "horizontal": abs(dx) >= abs(dy),
+        "pause_before_click": None,
+    }
+
+
+def stroke_features(strokes: list[dict[str, Any]]) -> dict[str, Any]:
+    """Mouse v3 window features from the strokes of one window."""
+    def median_of(key: str) -> float | None:
+        return _median([s[key] for s in strokes if s[key] is not None])
+
+    pauses = [s["pause_before_click"] for s in strokes if s["pause_before_click"] is not None]
+    count = len(strokes)
+    return {
+        "stroke_count": count,
+        "stroke_duration_ms_median": median_of("duration"),
+        "stroke_length_px_median": median_of("length"),
+        "stroke_efficiency_mean": _mean([s["efficiency"] for s in strokes]),
+        "stroke_efficiency_median": median_of("efficiency"),
+        "stroke_deviation_ratio_median": median_of("deviation"),
+        "stroke_curvature_rad_per_px_median": median_of("curvature"),
+        "stroke_peak_speed_px_per_second_median": median_of("peak_speed"),
+        "stroke_time_to_peak_ratio_median": median_of("time_to_peak"),
+        "stroke_horizontal_share": (
+            sum(s["horizontal"] for s in strokes) / count if count else None
+        ),
+        "click_stroke_share": len(pauses) / count if count else None,
+        "pause_before_click_ms_median": _median(pauses),
+    }
+
+
 class MouseWindow:
     def __init__(self) -> None:
         self.reset()
@@ -299,9 +399,20 @@ class MouseWindow:
         self.jerks: list[float] = []
         self.last_speed: float | None = None
         self.last_acceleration: float | None = None
+        self.stroke_points: list[tuple[float, float, float]] = []
+        self.strokes: list[dict[str, Any]] = []
+
+    def _end_stroke(self) -> None:
+        stroke = summarize_stroke(self.stroke_points)
+        if stroke is not None:
+            self.strokes.append(stroke)
+        self.stroke_points = []
 
     def move(self, x: float, y: float, at: float) -> None:
         point = (x, y, at)
+        if self.stroke_points and at - self.stroke_points[-1][2] > STROKE_GAP_MS:
+            self._end_stroke()
+        self.stroke_points.append(point)
         self.moves += 1
         if self.burst_start is None:
             self.burst_start = point
@@ -350,6 +461,12 @@ class MouseWindow:
         self.right_clicks += 1
 
     def click(self, at: float) -> None:
+        self._end_stroke()
+        if self.strokes:
+            last = self.strokes[-1]
+            pause = at - last["end"]
+            if last["pause_before_click"] is None and 0 <= pause <= CLICK_AFTER_STROKE_MS:
+                last["pause_before_click"] = pause
         self.clicks += 1
         if self.last_click is not None and at - self.last_click <= CLICK_GAP_MS:
             self.click_intervals.append(at - self.last_click)
@@ -382,6 +499,9 @@ class MouseWindow:
             "jerk_px_per_second3_median": _median(self.jerks),
             "jerk_px_per_second3_p90": _p90(self.jerks),
             "right_click_count": self.right_clicks,
+            **stroke_features(
+                self.strokes + [s for s in [summarize_stroke(self.stroke_points)] if s]
+            ),
         }
 
 
@@ -393,7 +513,7 @@ def _finite(value: Any) -> bool:
 
 
 def attach_v2(row: dict[str, Any], features: dict[str, Any], names: list[str],
-              report: Counter | None, modality: str) -> None:
+              report: Counter | None, modality: str, label: str = "v2") -> None:
     """Add feature set v2 to a kept row, without ever dropping the row.
 
     Older live rows have no v2 values at all; they keep the v1 schema. A value
@@ -407,7 +527,7 @@ def attach_v2(row: dict[str, Any], features: dict[str, Any], names: list[str],
         if not _finite(value) or value < 0:
             value = 0.0
             if report is not None:
-                report[f"{modality}_v2_filled_zero_{name}"] += 1
+                report[f"{modality}_{label}_filled_zero_{name}"] += 1
         row[name] = float(value)
 
 
@@ -453,6 +573,7 @@ def clean_mouse(features: dict[str, Any],
     if any(value < 0 for value in row.values()) or row["straightness_ratio"] > 1:
         return None, "out_of_range"
     attach_v2(row, features, V2_MOUSE_FEATURES, report, "mouse")
+    attach_v2(row, features, V3_MOUSE_FEATURES, report, "mouse", "v3")
     return row, "kept"
 
 
@@ -620,7 +741,7 @@ def read_live(path: Path) -> list[dict[str, Any]]:
             keyboard_names = KEYBOARD_FEATURES + [n for n in V2_KEYBOARD_FEATURES if n in columns]
             mouse_names = (
                 MOUSE_FEATURES + ["click_interval_ms_mean"] + DEVICE_SIGNAL_FEATURES
-                + [n for n in V2_MOUSE_FEATURES if n in columns]
+                + [n for n in V2_MOUSE_FEATURES + V3_MOUSE_FEATURES if n in columns]
             )
             for row in reader:
                 records.append({
@@ -734,6 +855,7 @@ def live_rows(records: list[dict[str, Any]], report: Counter,
     mouse.sort(key=_live_order)
     harmonize_v2(keyboard, "keyboard", V2_KEYBOARD_FEATURES, report)
     harmonize_v2(mouse, "mouse", V2_MOUSE_FEATURES, report)
+    harmonize_v2(mouse, "mouse", V3_MOUSE_FEATURES, report, "v3")
     assign_live_splits(keyboard, has_round2=test_from is not None)
     assign_live_splits(mouse, has_round2=test_from is not None)
     mouse_split = {(r["subject_id"], r["session_id"], r["window_index"]): r["split"] for r in mouse}
@@ -744,7 +866,7 @@ def live_rows(records: list[dict[str, Any]], report: Counter,
 
 
 def harmonize_v2(rows: list[dict[str, Any]], modality: str, names: list[str],
-                 report: Counter) -> None:
+                 report: Counter, label: str = "v2") -> None:
     """Keep one schema per file: v2 only if every window has it.
 
     Live rows sent before the v2 extension have no v2 values. If old and new
@@ -753,9 +875,9 @@ def harmonize_v2(rows: list[dict[str, Any]], modality: str, names: list[str],
     """
     key = f"{modality}_features"
     with_v2 = sum(1 for row in rows if names[0] in row[key])
-    report[f"live_{modality}_windows_with_v2"] += with_v2
+    report[f"live_{modality}_windows_with_{label}"] += with_v2
     if 0 < with_v2 < len(rows):
-        report[f"live_{modality}_v2_dropped_mixed_versions"] += with_v2
+        report[f"live_{modality}_{label}_dropped_mixed_versions"] += with_v2
         for row in rows:
             for name in names:
                 row[key].pop(name, None)
@@ -871,11 +993,14 @@ def _read(path: Path) -> list[dict[str, Any]]:
 def _feature_names(modality: str, rows: list[dict[str, Any]] | None = None) -> list[str]:
     """Features to scale; v2 is included when the rows carry it."""
     if modality == "keyboard":
-        names, v2 = KEYBOARD_FEATURES + RELATIVE_KEYBOARD_FEATURES, V2_KEYBOARD_FEATURES
+        names = KEYBOARD_FEATURES + RELATIVE_KEYBOARD_FEATURES
+        extra_sets = [V2_KEYBOARD_FEATURES]
     else:
-        names, v2 = list(MOUSE_FEATURES), V2_MOUSE_FEATURES
-    if rows and all(v2[0] in row[f"{modality}_features"] for row in rows):
-        names = names + v2
+        names = list(MOUSE_FEATURES)
+        extra_sets = [V2_MOUSE_FEATURES, V3_MOUSE_FEATURES]
+    for extra in extra_sets:
+        if rows and all(extra[0] in row[f"{modality}_features"] for row in rows):
+            names = names + extra
     return names
 
 
@@ -970,6 +1095,11 @@ def main(argv: list[str] | None = None) -> int:
         "keyboard_relative_features": RELATIVE_KEYBOARD_FEATURES,
         "keyboard_v2_features": V2_KEYBOARD_FEATURES,
         "mouse_v2_features": V2_MOUSE_FEATURES,
+        "mouse_v3_features": V3_MOUSE_FEATURES,
+        "mouse_v3_stroke_rules": {
+            "stroke_gap_ms": STROKE_GAP_MS, "min_stroke_samples": MIN_STROKE_SAMPLES,
+            "min_stroke_px": MIN_STROKE_PX, "click_after_stroke_ms": CLICK_AFTER_STROKE_MS,
+        },
         "mouse_features": MOUSE_FEATURES,
         "min_keydowns_per_ub_window": MIN_KEYDOWNS,
         "min_ub_mouse_windows_per_subject": MIN_UB_MOUSE_WINDOWS_PER_SUBJECT,

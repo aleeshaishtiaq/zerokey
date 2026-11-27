@@ -121,6 +121,11 @@ per split). No nulls, no IP, no window in two splits.
   windows. If v2 helps on UB, the extension and API must compute the same
   values with the same formulas; deploy the API before reloading the
   extension.
+- **Mouse v3** (`V3_MOUSE_FEATURES`): per-stroke features summarised per
+  window (stroke = movement without a pause over 300 ms; click stroke = left
+  click within 1 s after it). Done for UB (28 Nov). `stroke_count` lets
+  training require a minimum number of strokes per window. Same rule as v2
+  for live and for the extension.
 - Raw UB mouse files contain the lab computer name, user name and IP address.
   Keep raw data in `data/raw/` only.
 
