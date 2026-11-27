@@ -12,7 +12,8 @@ Newest entry first. Every chat adds an entry here at the end of its task
   Forest, Autoencoder) per user and modality on the `train` split, thresholds
   on `calibration`, final metrics on `test`; compare and pick the best. Rules
   in `AGENTS.md` > "Model training (Azka)". Input-profile clustering comes
-  later (see `docs/input-profiles-design.md`).
+  later (see `docs/input-profiles-design.md`). Step 1 (UB keyboard) done on
+  27 Nov; mouse, live and fusion still open.
 - [ ] Live round 2 (Areeba, Aleesha) for the final live **test** split: collect
   after a 2-3 day gap (one week better), when Azka says her training code is
   ready; then export and rerun with `--live-test-from <first day of round 2>`
@@ -36,6 +37,37 @@ rows on Aleesha's device ID) was saved under Areeba's account, so it is valid
 training data.
 
 ## Log
+
+### 2026-11-27 — Azka
+- Model training, step 1 (UB keyboard only), on branch `feature/model-training`:
+  - `src/training/`: data loading (`data.py`), One-Class SVM / Isolation Forest /
+    MLP autoencoder per user (`models.py`, scikit-learn), FAR / FRR / EER / AUC
+    (`metrics.py`), and `python -m src.training.train_ub_keyboard`.
+  - Each user's model and scaler are fitted on that user's `train` windows; the
+    threshold is set where FAR = FRR on `calibration`; metrics are on `test`.
+    Impostors = the other UB users of the same split.
+  - Training packages are in `requirements-training.txt` (not in
+    `requirements.txt`, so the Vercel API stays small).
+  - Output (gitignored): `data/processed/models/ub_keyboard/<run>/`
+    (`per_user_metrics.csv`, `summary.json`, `config.json`, `run.log`).
+  - Tests: `tests/test_training_models.py` (skipped where scikit-learn is not
+    installed, for example in CI).
+- First full run (148 users, one 15 s window per decision, mean over users):
+
+  | Model | Features | Test EER | Test AUC | Test FAR | Test FRR |
+  |---|---|---|---|---|---|
+  | One-Class SVM | 10 | 0.288 | 0.755 | 0.381 | 0.220 |
+  | One-Class SVM | 15 | 0.290 | 0.753 | 0.390 | 0.221 |
+  | Isolation Forest | 10 | 0.296 | 0.749 | 0.427 | 0.218 |
+  | Isolation Forest | 15 | 0.293 | 0.752 | 0.426 | 0.215 |
+  | Autoencoder | 10 | 0.294 | 0.753 | 0.417 | 0.210 |
+  | Autoencoder | 15 | 0.301 | 0.742 | 0.419 | 0.227 |
+
+  The models are close; One-Class SVM with 10 features is best so far. The 5
+  relative features do not help yet. FAR on test is higher than the
+  calibration EER because test (session 2) is weeks later.
+- Still open: UB mouse, live keyboard/mouse, score fusion, combining
+  consecutive windows, model tuning on calibration, saving the fitted models.
 
 ### 2026-11-26 (evening) — Areeba
 - Extension 1.5.3 tested after the API deploy: rows arrive with the four
