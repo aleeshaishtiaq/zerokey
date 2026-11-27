@@ -7,10 +7,12 @@ import pytest
 np = pytest.importorskip("numpy")
 pytest.importorskip("sklearn")
 
-from src.training.data import KEYBOARD_FEATURE_SETS, MOUSE_FEATURES, load_split  # noqa: E402
+from src.training.data import (  # noqa: E402
+    KEYBOARD_FEATURE_SETS, MOUSE_FEATURE_SETS, MOUSE_FEATURES, load_split,
+)
 from src.training.metrics import auc, eer, far_frr  # noqa: E402
 from src.training.models import MODEL_NAMES, UserModel, autoencoder_layers  # noqa: E402
-from src.training.train_ub import evaluate_user, parse_args, run  # noqa: E402
+from src.training.train_ub import decision_scores, evaluate_user, parse_args, run  # noqa: E402
 
 
 def test_metrics_on_perfectly_separated_scores():
@@ -123,7 +125,7 @@ def test_mouse_run_only_models_users_with_train_windows(tmp_path):
 
 
 def test_feature_sets_default_to_the_modality():
-    assert parse_args(["--modality", "mouse"]).feature_sets == ["mouse5", "mouse15"]
+    assert parse_args(["--modality", "mouse"]).feature_sets == ["mouse5", "mouse15", "mouse27"]
     assert parse_args(["--modality", "keyboard"]).feature_sets == [
         "abs10", "all15", "abs10_v2", "all21",
     ]
@@ -132,10 +134,61 @@ def test_feature_sets_default_to_the_modality():
 
 
 def test_feature_set_v2_keeps_every_v1_feature():
-    from src.training.data import KEYBOARD_V2_FEATURES, MOUSE_FEATURE_SETS, MOUSE_V2_FEATURES
+    from src.training.data import KEYBOARD_V2_FEATURES, MOUSE_V2_FEATURES
 
     assert KEYBOARD_FEATURE_SETS["abs10_v2"][:10] == KEYBOARD_FEATURE_SETS["abs10"]
     assert KEYBOARD_FEATURE_SETS["all21"][:15] == KEYBOARD_FEATURE_SETS["all15"]
     assert KEYBOARD_FEATURE_SETS["all21"][15:] == KEYBOARD_V2_FEATURES
     assert MOUSE_FEATURE_SETS["mouse15"] == MOUSE_FEATURES + MOUSE_V2_FEATURES
     assert len(set(KEYBOARD_FEATURE_SETS["all21"])) == 21
+
+
+def test_decision_scores_average_inside_each_session_only():
+    scores = [1, 2, 3, 4, 10, 20, 5, 5]
+    users = np.array(["a", "a", "a", "a", "a", "a", "b", "b"])
+    sessions = np.array(["s1", "s1", "s1", "s1", "s2", "s2", "s3", "s3"])
+
+    decided, decided_users = decision_scores(scores, users, sessions, windows=2)
+
+    assert decided.tolist() == [1.5, 2.5, 3.5, 15.0, 5.0]
+    assert decided_users.tolist() == ["a", "a", "a", "a", "b"]
+    same, same_users = decision_scores(scores, users, sessions, windows=1)
+    assert same.tolist() == [float(value) for value in scores]
+
+    short, _ = decision_scores([1, 2], ["a", "a"], ["s1", "s1"], windows=3)
+    assert short.size == 0
+
+
+def write_stroke_split(directory, split, rng):
+    path = directory / f"ub_mouse_{split}_clean.jsonl"
+    with open(path, "w", encoding="utf-8") as handle:
+        for index, user in enumerate(["001", "002", "003"]):
+            for window in range(40):
+                values = rng.normal(index * 5.0, 1.0, size=len(MOUSE_FEATURE_SETS["mouse27"]))
+                features = dict(zip(MOUSE_FEATURE_SETS["mouse27"], values.tolist()))
+                features["stroke_count"] = float(window % 4)  # 0, 1, 2, 3
+                handle.write(json.dumps({
+                    "user_id": user, "session_id": f"{user}{split}", "window_index": window,
+                    "mouse_features": features,
+                }) + "\n")
+
+
+def test_min_strokes_and_decision_windows(tmp_path):
+    rng = np.random.default_rng(3)
+    for split in ("train", "calibration", "test"):
+        write_stroke_split(tmp_path, split, rng)
+
+    summaries = run(tmp_path, tmp_path / "out", ["iforest"], ["mouse27"], modality="mouse",
+                    min_strokes=2, decision_windows=4)
+
+    assert summaries[0]["users"] == 3
+    assert summaries[0]["test_window_coverage"] == 0.5
+    assert summaries[0]["decision_windows"] == 4
+    lines = (tmp_path / "out" / "per_user_metrics.csv").read_text(encoding="utf-8").splitlines()
+    # 20 kept windows per user and split -> 17 decisions of 4 windows.
+    assert all(",17,34," in line for line in lines[1:])
+
+
+def test_min_strokes_is_mouse_only():
+    with pytest.raises(SystemExit):
+        parse_args(["--modality", "keyboard", "--min-strokes", "2"])

@@ -62,9 +62,25 @@ MOUSE_V2_FEATURES = (
     "jerk_px_per_second3_p90",
     "right_click_count",
 )
+# Mouse v3 (zip v6 onwards, UB only for now): per-stroke features per window.
+MOUSE_V3_FEATURES = (
+    "stroke_count",
+    "stroke_duration_ms_median",
+    "stroke_length_px_median",
+    "stroke_efficiency_mean",
+    "stroke_efficiency_median",
+    "stroke_deviation_ratio_median",
+    "stroke_curvature_rad_per_px_median",
+    "stroke_peak_speed_px_per_second_median",
+    "stroke_time_to_peak_ratio_median",
+    "stroke_horizontal_share",
+    "click_stroke_share",
+    "pause_before_click_ms_median",
+)
 MOUSE_FEATURE_SETS = {
     "mouse5": MOUSE_FEATURES,
     "mouse15": MOUSE_FEATURES + MOUSE_V2_FEATURES,
+    "mouse27": MOUSE_FEATURES + MOUSE_V2_FEATURES + MOUSE_V3_FEATURES,
 }
 FEATURE_SETS = {"keyboard": KEYBOARD_FEATURE_SETS, "mouse": MOUSE_FEATURE_SETS}
 
@@ -93,3 +109,23 @@ def to_matrix(windows, features, feature_key="keyboard_features"):
 def load_split(data_dir, source, modality, split, features, kind="clean"):
     windows = read_windows(window_file(data_dir, source, modality, split, kind))
     return to_matrix(windows, features, f"{modality}_features")
+
+
+def load_split_with_sessions(data_dir, source, modality, split, features, min_strokes=None,
+                             kind="clean"):
+    """Return (X, user_ids, session_ids, total_windows), in file (time) order.
+
+    ``min_strokes`` keeps only mouse windows with ``stroke_count >= min_strokes``.
+    """
+    windows = read_windows(window_file(data_dir, source, modality, split, kind))
+    total = len(windows)
+    if min_strokes:
+        if modality != "mouse":
+            raise ValueError("min_strokes only applies to mouse windows")
+        windows = [
+            window for window in windows
+            if float(window["mouse_features"].get("stroke_count", 0)) >= min_strokes
+        ]
+    matrix, users = to_matrix(windows, features, f"{modality}_features")
+    sessions = np.array([str(window.get("session_id", "")) for window in windows])
+    return matrix, users, sessions, total
