@@ -101,6 +101,8 @@ let mouseMoveCount = 0;
 let clickCount = 0;
 let lastClickAt = null;
 let clickIntervals = [];
+// Feature set v2 (kinematics, right clicks) and mouse v3 (strokes), see features.js.
+let mouseExtras = globalThis.ZeroKeyFeatures.createMouseExtras();
 
 let keyDownCount = 0;
 let overlappingKeyDownCount = 0;
@@ -112,6 +114,9 @@ let releasePressIntervals = [];
 let pressPressIntervals = [];
 let keyIntervals = [];
 let pauseDurations = [];
+// Feature set v2: only a count of Backspace presses is kept, never key text.
+let backspaceCount = 0;
+let releaseReleaseIntervals = [];
 
 function markPortalActivity() {
   if (!portalSession) {
@@ -179,6 +184,7 @@ function onMouseMove(event) {
     y: event.clientY,
     at: performance.now(),
   };
+  mouseExtras.addPoint(point);
   mouseMoveCount += 1;
   if (!mouseBurstStart) {
     mouseBurstStart = point;
@@ -197,9 +203,11 @@ function onMouseMove(event) {
       );
       mouseBurstStart = point;
       previousDirection = null;
+      mouseExtras.resetKinematics();
     } else if (distance > 0 && elapsed > 0) {
       mousePathLength += distance;
       mouseActiveDuration += elapsed;
+      mouseExtras.kinematics(distance, elapsed);
 
       const direction = Math.atan2(dy, dx);
       if (previousDirection !== null) {
@@ -271,6 +279,7 @@ function onClick() {
   }
 
   const now = performance.now();
+  mouseExtras.click(now);
   clickCount += 1;
   if (lastClickAt !== null) {
     const interval = now - lastClickAt;
@@ -279,6 +288,13 @@ function onClick() {
     }
   }
   lastClickAt = now;
+}
+
+function onMouseDown(event) {
+  if (event.button !== 2 || !markPortalActivity()) {
+    return;
+  }
+  mouseExtras.rightClick();
 }
 
 function onKeyDown(event) {
@@ -292,6 +308,9 @@ function onKeyDown(event) {
   }
   heldKeys.set(event.code, now);
   keyDownCount += 1;
+  if (event.code === 'Backspace') {
+    backspaceCount += 1;
+  }
 
   if (lastKeyDownAt !== null) {
     const interval = now - lastKeyDownAt;
@@ -321,6 +340,12 @@ function onKeyUp(event) {
   const now = performance.now();
   dwellTimes.push(now - pressedAt);
   heldKeys.delete(event.code);
+  if (lastKeyUpAt !== null) {
+    const interval = now - lastKeyUpAt;
+    if (interval >= 0 && interval < PAUSE_THRESHOLD_MS) {
+      releaseReleaseIntervals.push(interval);
+    }
+  }
   lastKeyUpAt = now;
 }
 
@@ -341,6 +366,7 @@ function clearWindowFeatures() {
   clickCount = 0;
   lastClickAt = null;
   clickIntervals = [];
+  mouseExtras = globalThis.ZeroKeyFeatures.createMouseExtras();
   keyDownCount = 0;
   overlappingKeyDownCount = 0;
   lastKeyDownAt = null;
@@ -351,6 +377,8 @@ function clearWindowFeatures() {
   pressPressIntervals = [];
   keyIntervals = [];
   pauseDurations = [];
+  backspaceCount = 0;
+  releaseReleaseIntervals = [];
   pointerRawEvents = 0;
   pointerMoveEvents = 0;
   pointerActiveMs = 0;
@@ -400,6 +428,7 @@ function sendWindowFeatures() {
         pointerMoveEvents > 0 ? pointerRawEvents / pointerMoveEvents : null,
       wheel_event_count: wheelEvents,
       wheel_smooth_ratio: wheelEvents > 0 ? smoothWheelEvents / wheelEvents : null,
+      ...mouseExtras.features(),
     },
     keyboard_features: {
       dwell_time_ms_mean: mean(dwellTimes),
@@ -417,6 +446,12 @@ function sendWindowFeatures() {
       rp_latency_ms_stddev: standardDeviation(releasePressIntervals),
       rollover_ratio:
         keyDownCount > 0 ? overlappingKeyDownCount / keyDownCount : 0,
+      backspace_rate: keyDownCount > 0 ? backspaceCount / keyDownCount : 0,
+      dwell_time_ms_median: globalThis.ZeroKeyFeatures.median(dwellTimes),
+      pp_latency_ms_median: globalThis.ZeroKeyFeatures.median(pressPressIntervals),
+      rp_latency_ms_median: globalThis.ZeroKeyFeatures.median(releasePressIntervals),
+      rr_latency_ms_mean: mean(releaseReleaseIntervals),
+      rr_latency_ms_median: globalThis.ZeroKeyFeatures.median(releaseReleaseIntervals),
     },
   };
 
@@ -458,6 +493,7 @@ function startCollector() {
   }
   document.addEventListener('mousemove', onMouseMove, { passive: true });
   document.addEventListener('click', onClick, { passive: true });
+  document.addEventListener('mousedown', onMouseDown, { passive: true });
   document.addEventListener('pointermove', onPointerMove, { passive: true });
   document.addEventListener('wheel', onWheel, { passive: true });
   document.addEventListener('keydown', onKeyDown, { passive: true });
@@ -470,6 +506,7 @@ function stopCollector() {
   if (collectorInterval !== null) {
     document.removeEventListener('mousemove', onMouseMove);
     document.removeEventListener('click', onClick);
+    document.removeEventListener('mousedown', onMouseDown);
     document.removeEventListener('pointermove', onPointerMove);
     document.removeEventListener('wheel', onWheel);
     document.removeEventListener('keydown', onKeyDown);

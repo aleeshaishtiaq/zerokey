@@ -69,6 +69,35 @@ class TelemetryRecord(Base):
     coalesced_events_per_move: Mapped[float | None] = mapped_column(Float, nullable=True)
     wheel_event_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     wheel_smooth_ratio: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Feature set v2 and mouse v3 (extension 1.6.0+)
+    speed_px_per_second_std: Mapped[float | None] = mapped_column(Float, nullable=True)
+    speed_px_per_second_median: Mapped[float | None] = mapped_column(Float, nullable=True)
+    speed_px_per_second_p90: Mapped[float | None] = mapped_column(Float, nullable=True)
+    acceleration_px_per_second2_mean: Mapped[float | None] = mapped_column(Float, nullable=True)
+    acceleration_px_per_second2_std: Mapped[float | None] = mapped_column(Float, nullable=True)
+    acceleration_px_per_second2_p90: Mapped[float | None] = mapped_column(Float, nullable=True)
+    jerk_px_per_second3_mean: Mapped[float | None] = mapped_column(Float, nullable=True)
+    jerk_px_per_second3_median: Mapped[float | None] = mapped_column(Float, nullable=True)
+    jerk_px_per_second3_p90: Mapped[float | None] = mapped_column(Float, nullable=True)
+    right_click_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    stroke_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    stroke_duration_ms_median: Mapped[float | None] = mapped_column(Float, nullable=True)
+    stroke_length_px_median: Mapped[float | None] = mapped_column(Float, nullable=True)
+    stroke_efficiency_mean: Mapped[float | None] = mapped_column(Float, nullable=True)
+    stroke_efficiency_median: Mapped[float | None] = mapped_column(Float, nullable=True)
+    stroke_deviation_ratio_median: Mapped[float | None] = mapped_column(Float, nullable=True)
+    stroke_curvature_rad_per_px_median: Mapped[float | None] = mapped_column(Float, nullable=True)
+    stroke_peak_speed_px_per_second_median: Mapped[float | None] = mapped_column(Float, nullable=True)
+    stroke_time_to_peak_ratio_median: Mapped[float | None] = mapped_column(Float, nullable=True)
+    stroke_horizontal_share: Mapped[float | None] = mapped_column(Float, nullable=True)
+    click_stroke_share: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pause_before_click_ms_median: Mapped[float | None] = mapped_column(Float, nullable=True)
+    backspace_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    dwell_time_ms_median: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pp_latency_ms_median: Mapped[float | None] = mapped_column(Float, nullable=True)
+    rp_latency_ms_median: Mapped[float | None] = mapped_column(Float, nullable=True)
+    rr_latency_ms_mean: Mapped[float | None] = mapped_column(Float, nullable=True)
+    rr_latency_ms_median: Mapped[float | None] = mapped_column(Float, nullable=True)
     dwell_time_ms_mean: Mapped[float | None] = mapped_column(Float, nullable=True)
     dwell_time_ms_stddev: Mapped[float | None] = mapped_column(Float, nullable=True)
     pp_latency_ms_mean: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -193,6 +222,34 @@ def insert_telemetry(record: dict[str, Any], database_url: str | None = None) ->
         coalesced_events_per_move=mouse.get("coalesced_events_per_move"),
         wheel_event_count=mouse.get("wheel_event_count"),
         wheel_smooth_ratio=mouse.get("wheel_smooth_ratio"),
+        speed_px_per_second_std=mouse.get("speed_px_per_second_std"),
+        speed_px_per_second_median=mouse.get("speed_px_per_second_median"),
+        speed_px_per_second_p90=mouse.get("speed_px_per_second_p90"),
+        acceleration_px_per_second2_mean=mouse.get("acceleration_px_per_second2_mean"),
+        acceleration_px_per_second2_std=mouse.get("acceleration_px_per_second2_std"),
+        acceleration_px_per_second2_p90=mouse.get("acceleration_px_per_second2_p90"),
+        jerk_px_per_second3_mean=mouse.get("jerk_px_per_second3_mean"),
+        jerk_px_per_second3_median=mouse.get("jerk_px_per_second3_median"),
+        jerk_px_per_second3_p90=mouse.get("jerk_px_per_second3_p90"),
+        right_click_count=mouse.get("right_click_count"),
+        stroke_count=mouse.get("stroke_count"),
+        stroke_duration_ms_median=mouse.get("stroke_duration_ms_median"),
+        stroke_length_px_median=mouse.get("stroke_length_px_median"),
+        stroke_efficiency_mean=mouse.get("stroke_efficiency_mean"),
+        stroke_efficiency_median=mouse.get("stroke_efficiency_median"),
+        stroke_deviation_ratio_median=mouse.get("stroke_deviation_ratio_median"),
+        stroke_curvature_rad_per_px_median=mouse.get("stroke_curvature_rad_per_px_median"),
+        stroke_peak_speed_px_per_second_median=mouse.get("stroke_peak_speed_px_per_second_median"),
+        stroke_time_to_peak_ratio_median=mouse.get("stroke_time_to_peak_ratio_median"),
+        stroke_horizontal_share=mouse.get("stroke_horizontal_share"),
+        click_stroke_share=mouse.get("click_stroke_share"),
+        pause_before_click_ms_median=mouse.get("pause_before_click_ms_median"),
+        backspace_rate=keyboard.get("backspace_rate"),
+        dwell_time_ms_median=keyboard.get("dwell_time_ms_median"),
+        pp_latency_ms_median=keyboard.get("pp_latency_ms_median"),
+        rp_latency_ms_median=keyboard.get("rp_latency_ms_median"),
+        rr_latency_ms_mean=keyboard.get("rr_latency_ms_mean"),
+        rr_latency_ms_median=keyboard.get("rr_latency_ms_median"),
         dwell_time_ms_mean=keyboard["dwell_time_ms_mean"],
         dwell_time_ms_stddev=keyboard["dwell_time_ms_stddev"],
         pp_latency_ms_mean=keyboard["pp_latency_ms_mean"],
@@ -266,6 +323,28 @@ def _serialize(row: TelemetryRecord) -> dict[str, Any]:
             "coalesced_events_per_move": row.coalesced_events_per_move,
             "wheel_event_count": row.wheel_event_count,
             "wheel_smooth_ratio": row.wheel_smooth_ratio,
+            "speed_px_per_second_std": row.speed_px_per_second_std,
+            "speed_px_per_second_median": row.speed_px_per_second_median,
+            "speed_px_per_second_p90": row.speed_px_per_second_p90,
+            "acceleration_px_per_second2_mean": row.acceleration_px_per_second2_mean,
+            "acceleration_px_per_second2_std": row.acceleration_px_per_second2_std,
+            "acceleration_px_per_second2_p90": row.acceleration_px_per_second2_p90,
+            "jerk_px_per_second3_mean": row.jerk_px_per_second3_mean,
+            "jerk_px_per_second3_median": row.jerk_px_per_second3_median,
+            "jerk_px_per_second3_p90": row.jerk_px_per_second3_p90,
+            "right_click_count": row.right_click_count,
+            "stroke_count": row.stroke_count,
+            "stroke_duration_ms_median": row.stroke_duration_ms_median,
+            "stroke_length_px_median": row.stroke_length_px_median,
+            "stroke_efficiency_mean": row.stroke_efficiency_mean,
+            "stroke_efficiency_median": row.stroke_efficiency_median,
+            "stroke_deviation_ratio_median": row.stroke_deviation_ratio_median,
+            "stroke_curvature_rad_per_px_median": row.stroke_curvature_rad_per_px_median,
+            "stroke_peak_speed_px_per_second_median": row.stroke_peak_speed_px_per_second_median,
+            "stroke_time_to_peak_ratio_median": row.stroke_time_to_peak_ratio_median,
+            "stroke_horizontal_share": row.stroke_horizontal_share,
+            "click_stroke_share": row.click_stroke_share,
+            "pause_before_click_ms_median": row.pause_before_click_ms_median,
         },
         "keyboard_features": {
             "dwell_time_ms_mean": row.dwell_time_ms_mean,
@@ -279,5 +358,11 @@ def _serialize(row: TelemetryRecord) -> dict[str, Any]:
             "pause_duration_ms_mean": row.pause_duration_ms_mean,
             "inter_key_interval_ms_stddev": row.inter_key_interval_ms_stddev,
             "rollover_ratio": row.rollover_ratio,
+            "backspace_rate": row.backspace_rate,
+            "dwell_time_ms_median": row.dwell_time_ms_median,
+            "pp_latency_ms_median": row.pp_latency_ms_median,
+            "rp_latency_ms_median": row.rp_latency_ms_median,
+            "rr_latency_ms_mean": row.rr_latency_ms_mean,
+            "rr_latency_ms_median": row.rr_latency_ms_median,
         },
     }

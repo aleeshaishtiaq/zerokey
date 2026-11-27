@@ -7,6 +7,7 @@ from src.data_pipeline.features import (
     MouseFeatureSummary,
 )
 from src.data_pipeline.sanity_check import compare_records, verify_schema
+from src.data_pipeline.align_live import LIVE_ONLY_MOUSE_FEATURES
 
 
 def _ub_record(path_length, dwell_ms, pause_count):
@@ -128,14 +129,8 @@ def test_schema_verification_reports_live_and_ub_contract_differences():
     assert report["exact_feature_keys_match"] is False
     assert report["feature_key_differences"]["mouse"] == {
         "ub_only": ["click_interval_ticks_mean"],
-        # Device signals (extension 1.5.3+) have no UB equivalent.
-        "live_only": [
-            "click_interval_ms_mean",
-            "coalesced_events_per_move",
-            "pointer_event_rate_hz",
-            "wheel_event_count",
-            "wheel_smooth_ratio",
-        ],
+        # Device signals (1.5.3+), feature set v2 and mouse v3 (1.6.0+) are live-only.
+        "live_only": sorted(["click_interval_ms_mean", *LIVE_ONLY_MOUSE_FEATURES]),
     }
     assert "click_interval_ticks_mean" in report["mouse_click_interval"]["ub_field"]
     assert report["mouse_click_interval"]["ub_timebase"] == [("unverified", None)]

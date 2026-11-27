@@ -23,6 +23,40 @@ DEVICE_SIGNAL_FEATURES = (
     "wheel_event_count",
     "wheel_smooth_ratio",
 )
+# Live-only fields of extension 1.6.0+ (feature set v2, mouse v3); the old
+# UB-aligned schema below does not have them.
+LIVE_ONLY_MOUSE_FEATURES = DEVICE_SIGNAL_FEATURES + (
+    "speed_px_per_second_std",
+    "speed_px_per_second_median",
+    "speed_px_per_second_p90",
+    "acceleration_px_per_second2_mean",
+    "acceleration_px_per_second2_std",
+    "acceleration_px_per_second2_p90",
+    "jerk_px_per_second3_mean",
+    "jerk_px_per_second3_median",
+    "jerk_px_per_second3_p90",
+    "right_click_count",
+    "stroke_count",
+    "stroke_duration_ms_median",
+    "stroke_length_px_median",
+    "stroke_efficiency_mean",
+    "stroke_efficiency_median",
+    "stroke_deviation_ratio_median",
+    "stroke_curvature_rad_per_px_median",
+    "stroke_peak_speed_px_per_second_median",
+    "stroke_time_to_peak_ratio_median",
+    "stroke_horizontal_share",
+    "click_stroke_share",
+    "pause_before_click_ms_median",
+)
+LIVE_ONLY_KEYBOARD_FEATURES = (
+    "backspace_rate",
+    "dwell_time_ms_median",
+    "pp_latency_ms_median",
+    "rp_latency_ms_median",
+    "rr_latency_ms_mean",
+    "rr_latency_ms_median",
+)
 
 DEFAULT_LIVE_PATH = Path("data/raw/zerokey_captured/telemetry_log.jsonl")
 DEFAULT_OUTPUT_PATH = Path("data/processed/telemetry_log_ub_aligned.jsonl")
@@ -186,8 +220,8 @@ def align_records(
         )
 
         mouse_features = payload.mouse_features.model_dump(mode="json")
-        # Device signals have no UB equivalent, so they are not part of the UB schema.
-        for name in DEVICE_SIGNAL_FEATURES:
+        # Device signals, feature set v2 and mouse v3 are not part of this UB schema.
+        for name in LIVE_ONLY_MOUSE_FEATURES:
             mouse_features.pop(name, None)
         click_interval_ms = mouse_features.pop("click_interval_ms_mean")
         mouse_features["click_interval_ticks_mean"] = (
@@ -209,7 +243,11 @@ def align_records(
             "keyboard_ticks_per_second": 1000.0,
             "mouse_timestamp_unit": "milliseconds",
             "mouse_ticks_per_second": mouse_ticks_per_second,
-            "keyboard_features": payload.keyboard_features.model_dump(mode="json"),
+            "keyboard_features": {
+                name: value
+                for name, value in payload.keyboard_features.model_dump(mode="json").items()
+                if name not in LIVE_ONLY_KEYBOARD_FEATURES
+            },
             "mouse_features": mouse_features,
         }
         try:

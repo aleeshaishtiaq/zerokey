@@ -12,7 +12,7 @@ from src.api.main import app
 from src.api import routes
 from src.api.routes import TelemetryPayload
 from src.data import database
-from src.data_pipeline.align_live import align_records
+from src.data_pipeline.align_live import LIVE_ONLY_KEYBOARD_FEATURES, align_records
 
 
 def make_payload() -> TelemetryPayload:
@@ -284,7 +284,11 @@ def test_database_export_is_align_live_compatible(tmp_path, monkeypatch):
         reserved_ub_subject_ids=set(),
     )
     assert len(aligned) == 1
-    assert aligned[0]["keyboard_features"] == exported[0]["keyboard_features"]
+    assert aligned[0]["keyboard_features"] == {
+        name: value
+        for name, value in exported[0]["keyboard_features"].items()
+        if name not in LIVE_ONLY_KEYBOARD_FEATURES
+    }
     assert aligned[0]["mouse_features"]["click_interval_ticks_mean"] is None
 
 
