@@ -60,6 +60,44 @@ training data.
 
 ## Log
 
+### 2026-11-28 — Azka
+- Zip v6 unpacked (checksums OK). Training code: mouse set `mouse27`
+  (5 v1 + 10 v2 + 12 v3) in `src/training/data.py`, and two options in
+  `train_ub`: `--min-strokes N` (mouse; keeps windows with
+  `stroke_count >= N` in every split; coverage = share of test windows kept)
+  and `--decision-windows K` (one decision = mean score of K consecutive
+  windows of the same session; 4 = 1 minute; same rule on calibration and
+  test). Thresholds still come from calibration only.
+- The four agreed UB mouse tests (test EER / AUC, mean over users):
+
+  | Test | Coverage | One-Class SVM | Isolation Forest | Autoencoder |
+  |---|---|---|---|---|
+  | mouse15 (v2, reference) | 100% | 0.458 / 0.563 | 0.461 / 0.560 | 0.455 / 0.561 |
+  | 1. option 3: mouse27 | 100% | 0.452 / 0.573 | 0.456 / 0.564 | 0.451 / 0.573 |
+  | 2. 3 + 1: strokes >= 2 | 80% | 0.443 / 0.586 | 0.449 / 0.577 | 0.441 / 0.583 |
+  | 2. 3 + 1: strokes >= 4 | 48% | 0.434 / 0.595 | 0.447 / 0.583 | 0.435 / 0.589 |
+  | 3. 3 + 2: 4 windows (1 min) | 100% | 0.431 / 0.598 | 0.446 / 0.579 | 0.434 / 0.584 |
+  | 4. 3 + 1 + 2: strokes >= 2, 1 min | 80% | **0.417 / 0.617** | 0.432 / 0.598 | 0.426 / 0.601 |
+  | 4. 3 + 1 + 2: strokes >= 4, 1 min | 48% | 0.406 / 0.627 * | 0.439 / 0.590 * | 0.424 / 0.596 * |
+
+  \* only 126 of 145 users get a decision (too few windows left).
+  Reference for option 2 alone: mouse15 with 1-minute decisions gives
+  0.446 / 0.453 / 0.444.
+- Option 3 alone is not a clear gain: per user, mouse27 beats mouse15 for
+  71-75 users and loses for 59-64 (sign test p 0.19-0.61). Options 1 and 2
+  help more; the best mouse result is 3 + 1 + 2 (One-Class SVM, strokes >= 2,
+  1 minute): EER 0.417 at 80% coverage. UB mouse stays weak (AUC about 0.6).
+- Keyboard (abs10_v2) with option 2, for comparison: 1 window 0.268-0.269,
+  4 windows (1 min) 0.226 (Isolation Forest) / 0.228 (One-Class SVM),
+  8 windows (2 min) 0.207 (One-Class SVM) / 0.209 (Isolation Forest).
+  Decisions over several windows are the biggest gain so far.
+- Suggestion for the one extension + API update: keyboard v2 (clear gain);
+  for mouse, v3 adds little on UB, so it is a team call (UB users mostly type;
+  live portal data may move the mouse more). Multi-window decisions and
+  minimum strokes need no new data.
+- Still open: live models and fusion, saving the fitted models, choosing K
+  and the minimum strokes on calibration, model tuning on calibration.
+
 ### 2026-11-28 — Areeba
 - Team decision after Azka's v1 vs v2 result: keyboard v2 helps; for mouse,
   try **option 3** (per-stroke features) before changing the extension, so the
