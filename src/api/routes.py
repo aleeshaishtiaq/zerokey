@@ -75,6 +75,29 @@ class MouseFeatures(FeatureModel):
     coalesced_events_per_move: float | None = Field(default=None, ge=0)
     wheel_event_count: int | None = Field(default=None, ge=0)
     wheel_smooth_ratio: float | None = Field(default=None, ge=0, le=1)
+    # Feature set v2 and mouse v3 (extension 1.6.0+). Optional for older extensions.
+    speed_px_per_second_std: float | None = Field(default=None, ge=0)
+    speed_px_per_second_median: float | None = Field(default=None, ge=0)
+    speed_px_per_second_p90: float | None = Field(default=None, ge=0)
+    acceleration_px_per_second2_mean: float | None = Field(default=None, ge=0)
+    acceleration_px_per_second2_std: float | None = Field(default=None, ge=0)
+    acceleration_px_per_second2_p90: float | None = Field(default=None, ge=0)
+    jerk_px_per_second3_mean: float | None = Field(default=None, ge=0)
+    jerk_px_per_second3_median: float | None = Field(default=None, ge=0)
+    jerk_px_per_second3_p90: float | None = Field(default=None, ge=0)
+    right_click_count: int | None = Field(default=None, ge=0)
+    stroke_count: int | None = Field(default=None, ge=0)
+    stroke_duration_ms_median: float | None = Field(default=None, ge=0)
+    stroke_length_px_median: float | None = Field(default=None, ge=0)
+    stroke_efficiency_mean: float | None = Field(default=None, ge=0, le=1)
+    stroke_efficiency_median: float | None = Field(default=None, ge=0, le=1)
+    stroke_deviation_ratio_median: float | None = Field(default=None, ge=0)
+    stroke_curvature_rad_per_px_median: float | None = Field(default=None, ge=0)
+    stroke_peak_speed_px_per_second_median: float | None = Field(default=None, ge=0)
+    stroke_time_to_peak_ratio_median: float | None = Field(default=None, ge=0, le=1)
+    stroke_horizontal_share: float | None = Field(default=None, ge=0, le=1)
+    click_stroke_share: float | None = Field(default=None, ge=0, le=1)
+    pause_before_click_ms_median: float | None = Field(default=None, ge=0)
 
 
 class KeyboardFeatures(FeatureModel):
@@ -89,6 +112,13 @@ class KeyboardFeatures(FeatureModel):
     pause_duration_ms_mean: float | None = Field(default=None, ge=0)
     inter_key_interval_ms_stddev: float | None = Field(default=None, ge=0)
     rollover_ratio: float = Field(ge=0, le=1)
+    # Feature set v2 (extension 1.6.0+). Optional for older extensions.
+    backspace_rate: float | None = Field(default=None, ge=0, le=1)
+    dwell_time_ms_median: float | None = Field(default=None, ge=0)
+    pp_latency_ms_median: float | None = Field(default=None, ge=0)
+    rp_latency_ms_median: float | None = Field(default=None, ge=0)
+    rr_latency_ms_mean: float | None = Field(default=None, ge=0)
+    rr_latency_ms_median: float | None = Field(default=None, ge=0)
 
 
 class TelemetryPayload(FeatureModel):

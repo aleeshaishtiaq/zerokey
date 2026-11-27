@@ -126,6 +126,12 @@ per split). No nulls, no IP, no window in two splits.
   click within 1 s after it). Done for UB (28 Nov). `stroke_count` lets
   training require a minimum number of strokes per window. Same rule as v2
   for live and for the extension.
+- **Extension 1.6.0** sends keyboard v2, mouse v2 and mouse v3. The mouse
+  formulas live in `extension/features.js`; `tests/test_extension_parity.py`
+  checks that the extension and `prepare_training_windows.py` give the same
+  values. Any change to a feature formula must be made in both places and the
+  parity test must pass. Live rows from 1.6.0 on are rebuilt with
+  `--live-from <first day of the 1.6.0 round>`.
 - Raw UB mouse files contain the lab computer name, user name and IP address.
   Keep raw data in `data/raw/` only.
 

@@ -4,6 +4,16 @@ Newest entry first. Every chat adds an entry here at the end of its task
 (see `AGENTS.md`). Keep entries short: who, what, what is still open.
 
 ## Open items
+- [ ] **Extension 1.6.0 (feature set v2 + mouse v3) deploy order:** merge the
+  `feature/extension-v2-features` PR into `develop`, wait for CD, check
+  `/api/health`, then reload the extension in `chrome://extensions` and
+  refresh the portal tab. The old API rejects 1.6.0 windows (422).
+- [ ] **New live round 1 with extension 1.6.0 (Areeba, Aleesha):** two days,
+  2-3 sessions per day, per member per day about 1 hour of typing and about
+  1-1.5 hours of mouse/touchpad only (normal portal work: clicking, scrolling,
+  forms). Then export and rebuild with `--live-from <first day of the round>`
+  (the 23-26 Nov rows have no v2/v3 and are left out of these files). Round 2
+  (test) follows after a gap, with `--live-test-from`.
 - [ ] **Deploy order for extension 1.5.3:** merge the device-signals PR into
   `develop` (API deploys), check `/api/health`, and only then reload the
   extension in `chrome://extensions`. The old API rejects 1.5.3 windows (422)
@@ -59,6 +69,28 @@ rows on Aleesha's device ID) was saved under Areeba's account, so it is valid
 training data.
 
 ## Log
+
+### 2026-11-28 (night) — Areeba
+- Decision (team): option (a), extension and API get keyboard v2, mouse v2 and
+  mouse v3 together, so the extension and the live round change only once.
+  A quick check on the 23-26 Nov live data (old v1 features, 2 users, ~50
+  test windows each, so noisy): keyboard EER ~0.27 per window, ~0.21 with
+  1-minute decisions (One-Class SVM); mouse ~0.46, ~0.42 with 1 minute, about
+  the same as UB.
+- Extension **1.6.0**: new `extension/features.js` (loaded before
+  `content.js`) holds the v2 mouse kinematics and the mouse v3 stroke features
+  with the same formulas as `prepare_training_windows.py`; `content.js` adds
+  keyboard v2 (backspace count via `event.code` only, medians,
+  release-release) and right clicks (`mousedown`, button 2).
+- API and database: 28 optional fields / nullable columns (6 keyboard, 22
+  mouse), added to the existing table automatically on first use.
+  `align_live.py` drops them before the old UB-schema validation.
+- Tests: `tests/test_extension_parity.py` runs the real `content.js` in node
+  (`tests/extension_harness.js`) and checks that every v1/v2/v3 value equals
+  the Python pipeline for the same events (skipped where node is missing);
+  `tests/test_api_feature_set_v2.py`; `test_sanity_check.py` and
+  `test_telemetry.py` updated for the new live-only fields. Full suite 94
+  passed.
 
 ### 2026-11-28 — Azka
 - Zip v6 unpacked (checksums OK). Training code: mouse set `mouse27`
