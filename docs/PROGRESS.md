@@ -23,6 +23,8 @@ Newest entry first. Every chat adds an entry here at the end of its task
   mouse v2 helps a little.** Team decides which modality goes into the
   extension.
   Keep every current feature, so old and new results can be compared.
+  Mouse v3 (per-stroke features) added for UB on 28 Nov (zip v6); the
+  extension update waits for Azka's v3 tests.
   - Mouse: speed std / median / p90, acceleration (mean, std, p90), jerk
     (mean, median, p90), right-click count. In the 27 Nov test these were the
     most useful (jerk and acceleration first).
@@ -57,6 +59,31 @@ rows on Aleesha's device ID) was saved under Areeba's account, so it is valid
 training data.
 
 ## Log
+
+### 2026-11-28 — Areeba
+- Team decision after Azka's v1 vs v2 result: keyboard v2 helps; for mouse,
+  try **option 3** (per-stroke features) before changing the extension, so the
+  extension and the live round change only once. Test order on UB: option 3
+  alone, 3 + 1 (minimum strokes per window), 3 + 2 (several windows per
+  decision), then 3 + 1 + 2.
+- Mouse v3 in `prepare_training_windows.py` (UB): a stroke is movement with no
+  pause over 300 ms (at least 4 samples, 10 px); a click stroke is followed by
+  a left click within 1 s. 12 window features (`V3_MOUSE_FEATURES`): stroke
+  count, median duration / length / efficiency (+ mean) / deviation /
+  curvature / peak speed / time-to-peak, share of sideways strokes, share of
+  click strokes, median pause before the click. No window dropped; windows
+  without a stroke (3.3%) have `stroke_count` = 0. Every v1/v2 value is
+  identical to v5.
+- Quick check (Isolation Forest, test EER, UB mouse): mouse15 0.460 ->
+  mouse27 0.454; 1-minute decisions 0.437; plus `stroke_count` >= 2: 0.428 at
+  81% coverage. For keyboard, 1-minute decisions: 0.266 -> 0.232 (2 min
+  0.214). Mouse improves only a little on UB (UB users mostly type); live
+  portal data may move the mouse more.
+- Tests: `tests/test_mouse_v3.py`; full suite 83 passed.
+- Zip **v6** for Azka (`zerokey_training_data_v6.zip`): UB mouse 27 features;
+  keyboard and live unchanged.
+- Next: Azka runs the four tests; then one extension + API update (keyboard
+  v2 and the mouse sets that help), then one live round.
 
 ### 2026-11-27 (late night) — Azka
 - Zip v5 unpacked (checksums OK; live files unchanged). Feature set v2 added
