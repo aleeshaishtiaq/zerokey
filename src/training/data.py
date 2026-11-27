@@ -31,6 +31,15 @@ KEYBOARD_FEATURE_SETS = {
     "abs10": ABSOLUTE_KEYBOARD_FEATURES,
     "all15": ABSOLUTE_KEYBOARD_FEATURES + RELATIVE_KEYBOARD_FEATURES,
 }
+MOUSE_FEATURES = (
+    "path_length_px",
+    "displacement_px",
+    "average_velocity_px_per_second",
+    "direction_changes_per_second",
+    "straightness_ratio",
+)
+MOUSE_FEATURE_SETS = {"mouse5": MOUSE_FEATURES}
+FEATURE_SETS = {"keyboard": KEYBOARD_FEATURE_SETS, "mouse": MOUSE_FEATURE_SETS}
 
 
 def window_file(data_dir, source, modality, split, kind="clean"):

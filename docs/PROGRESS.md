@@ -12,8 +12,22 @@ Newest entry first. Every chat adds an entry here at the end of its task
   Forest, Autoencoder) per user and modality on the `train` split, thresholds
   on `calibration`, final metrics on `test`; compare and pick the best. Rules
   in `AGENTS.md` > "Model training (Azka)". Input-profile clustering comes
-  later (see `docs/input-profiles-design.md`). Step 1 (UB keyboard) done on
-  27 Nov; mouse, live and fusion still open.
+  later (see `docs/input-profiles-design.md`). Steps 1-2 (UB keyboard, UB
+  mouse) done on 27 Nov; live and fusion still open.
+- [ ] **Feature set v2 (Areeba):** redo the preprocessing with extra features
+  built from the same raw UB data, then send Azka training data zip v5.
+  Keep every current feature, so old and new results can be compared.
+  - Mouse: speed std / median / p90, acceleration (mean, std, p90), jerk
+    (mean, median, p90), right-click count. In the 27 Nov test these were the
+    most useful (jerk and acceleration first).
+  - Keyboard: backspace rate (a count only, no key text), median dwell /
+    press-press / release-press, and release-release latency.
+  - The same features must come from the extension for live data
+    (`extension/content.js`) and be accepted by the API: deploy the API first,
+    then bump the extension version and reload it.
+  - Note: the old `src/data_pipeline/parsers.py` click pattern does not match
+    UB click lines (`| Left | Click`); `prepare_training_windows.py` reads them
+    correctly, so the current training data is not affected.
 - [ ] Live round 2 (Areeba, Aleesha) for the final live **test** split: collect
   after a 2-3 day gap (one week better), when Azka says her training code is
   ready; then export and rerun with `--live-test-from <first day of round 2>`
@@ -66,8 +80,36 @@ training data.
   The models are close; One-Class SVM with 10 features is best so far. The 5
   relative features do not help yet. FAR on test is higher than the
   calibration EER because test (session 2) is weeks later.
-- Still open: UB mouse, live keyboard/mouse, score fusion, combining
-  consecutive windows, model tuning on calibration, saving the fitted models.
+- Step 2 (UB mouse): training now runs per modality with
+  `python -m src.training.train_ub --modality keyboard|mouse`
+  (`train_ub_keyboard` still works). 145 users, 5 mouse features:
+
+  | Model | Test EER | Test AUC | Test FAR | Test FRR |
+  |---|---|---|---|---|
+  | One-Class SVM | 0.474 | 0.539 | 0.468 | 0.475 |
+  | Isolation Forest | 0.471 | 0.541 | 0.463 | 0.477 |
+  | Autoencoder | 0.472 | 0.540 | 0.463 | 0.482 |
+
+  Mouse is close to chance. This is the features, not the split: a random
+  70/30 split inside each user's own train windows also gives AUC about 0.54,
+  and for every mouse feature the spread between users is only 0.25-0.38 of
+  the spread inside one user. Better mouse results need richer mouse features
+  (team decision; the data pipeline was not changed).
+- Raw UB check and mouse feature test (outside the repo, same 15 s windows
+  and splits as the pipeline; the 5 current features gave the same results):
+  - Raw UB mouse has only position, time, Left/Right clicks (no press/release)
+    and the active window. The raw files also hold the lab computer name,
+    user name and IP: keep them in `data/raw/` only.
+  - 33 mouse features (speed, acceleration, jerk, curvature, strokes, pauses,
+    clicks): test AUC 0.54 -> 0.58 (One-Class SVM EER 0.474 -> 0.447,
+    autoencoder 0.471 -> 0.443). Better, but UB mouse stays weak: the median
+    mouse window is active only about 21% of the time (about 600 px of
+    movement), because UB users mostly type. Keyboard stays the main signal.
+  - Agreed with the team: Areeba redoes the preprocessing with feature set v2
+    (see Open items).
+- Still open: live keyboard/mouse, score fusion, combining consecutive
+  windows, model tuning on calibration, saving the fitted models, retraining
+  on feature set v2.
 
 ### 2026-11-26 (evening) — Areeba
 - Extension 1.5.3 tested after the API deploy: rows arrive with the four

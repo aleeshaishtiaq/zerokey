@@ -110,6 +110,15 @@ per split). No nulls, no IP, no window in two splits.
 - The UB folders are large; if the run is slow on a mounted drive, copy them
   to a local disk first.
 - `data/` is gitignored. Training data is shared as a zip outside git.
+- **Planned: feature set v2 (Areeba).** Extra features from the same raw data,
+  added next to the current ones (nothing removed). Mouse: speed std / median
+  / p90, acceleration (mean, std, p90), jerk (mean, median, p90), right-click
+  count. Keyboard: backspace rate (count only, no key text), median timings,
+  release-release latency. UB pipeline, extension and API must produce the
+  same features; deploy the API before reloading the extension. Details and
+  the test behind this list: `docs/PROGRESS.md` (27 Nov, Azka).
+- Raw UB mouse files contain the lab computer name, user name and IP address.
+  Keep raw data in `data/raw/` only.
 
 ## Model training (Azka)
 Plan: 3 one-class models per user and modality, compared, best one selected.
