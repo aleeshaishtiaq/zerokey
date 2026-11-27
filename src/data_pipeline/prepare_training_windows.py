@@ -51,6 +51,16 @@ so they change less when a whole session gets faster or slower, for example on
 a different keyboard. Absolute features are kept, so training can compare
 "absolute only" with "absolute + relative".
 
+Feature set v2 (V2_KEYBOARD_FEATURES, V2_MOUSE_FEATURES) is added next to
+all earlier features; nothing is removed and no window is dropped because of
+it. Keyboard: backspace rate (a count only), median dwell / press-press /
+release-press, release-release mean and median. Mouse: speed std / median /
+p90, acceleration mean / std / p90, jerk mean / median / p90 (from
+consecutive movement samples inside a burst) and right-click count. A v2
+value that cannot be computed in a window is set to 0 and counted in the
+report. Live rows sent before the v2 extension have no v2 values; a live file
+only carries v2 when every window has it (see --live-from).
+
 Device signals (pointer event rate, coalesced events per move, wheel event
 count, share of smooth wheel events) are raw input characteristics sent by
 extension 1.5.3+. They help training split one user's pointer data into
@@ -105,6 +115,29 @@ KEYBOARD_FEATURES = [
     "pause_duration_ms_mean",
     "rollover_ratio",
 ]
+# Feature set v2: added next to the features above (nothing removed). The
+# extension computes the same values with the same formulas.
+V2_KEYBOARD_FEATURES = [
+    "backspace_rate",          # backspace key-downs / all key-downs (a count, no key text)
+    "dwell_time_ms_median",
+    "pp_latency_ms_median",
+    "rp_latency_ms_median",
+    "rr_latency_ms_mean",      # release-release, consecutive releases < PAUSE_THRESHOLD_MS
+    "rr_latency_ms_median",
+]
+V2_MOUSE_FEATURES = [
+    "speed_px_per_second_std",
+    "speed_px_per_second_median",
+    "speed_px_per_second_p90",
+    "acceleration_px_per_second2_mean",
+    "acceleration_px_per_second2_std",
+    "acceleration_px_per_second2_p90",
+    "jerk_px_per_second3_mean",
+    "jerk_px_per_second3_median",
+    "jerk_px_per_second3_p90",
+    "right_click_count",
+]
+BACKSPACE_KEYS = {"Back", "Backspace"}  # UB virtual-key name, browser KeyboardEvent.key
 # Derived from the features above (see relative_keyboard_features).
 RELATIVE_KEYBOARD_FEATURES = [
     "dwell_time_cv",
@@ -150,6 +183,14 @@ def _std(values: list[float]) -> float | None:
     return math.sqrt(sum((value - average) ** 2 for value in values) / len(values))
 
 
+def _median(values: list[float]) -> float | None:
+    return _quantile(sorted(values), 0.5) if values else None
+
+
+def _p90(values: list[float]) -> float | None:
+    return _quantile(sorted(values), 0.9) if values else None
+
+
 def ub_device_id(subject_id: str, keyboard_code: int) -> str:
     # Same as parsers.dataset_device_id, so ids match the existing UB files.
     return hashlib.sha256(f"{subject_id}_keyboard{keyboard_code}".encode()).hexdigest()
@@ -174,6 +215,8 @@ class KeyboardWindow:
         self.pp: list[float] = []
         self.intervals: list[float] = []
         self.pauses: list[float] = []
+        self.backspaces = 0
+        self.rr: list[float] = []
 
     def key_down(self, key: str, at: float) -> None:
         if key in self.held:
@@ -182,6 +225,8 @@ class KeyboardWindow:
             self.overlapping += 1
         self.held[key] = at
         self.key_downs += 1
+        if key in BACKSPACE_KEYS:
+            self.backspaces += 1
         if self.last_down is not None:
             interval = at - self.last_down
             if interval >= PAUSE_THRESHOLD_MS:
@@ -201,6 +246,10 @@ class KeyboardWindow:
         if pressed is None:
             return
         self.dwell.append(at - pressed)
+        if self.last_up is not None:
+            interval = at - self.last_up
+            if 0 <= interval < PAUSE_THRESHOLD_MS:
+                self.rr.append(interval)
         self.last_up = at
 
     def features(self) -> dict[str, Any]:
@@ -218,6 +267,12 @@ class KeyboardWindow:
             "pause_duration_ms_mean": _mean(self.pauses),
             "inter_key_interval_ms_stddev": _std(self.intervals),
             "rollover_ratio": self.overlapping / self.key_downs if self.key_downs else 0.0,
+            "backspace_rate": self.backspaces / self.key_downs if self.key_downs else 0.0,
+            "dwell_time_ms_median": _median(self.dwell),
+            "pp_latency_ms_median": _median(self.pp),
+            "rp_latency_ms_median": _median(self.rp),
+            "rr_latency_ms_mean": _mean(self.rr),
+            "rr_latency_ms_median": _median(self.rr),
         }
 
 
@@ -238,6 +293,12 @@ class MouseWindow:
         self.clicks = 0
         self.last_click: float | None = None
         self.click_intervals: list[float] = []
+        self.right_clicks = 0
+        self.speeds: list[float] = []
+        self.accelerations: list[float] = []
+        self.jerks: list[float] = []
+        self.last_speed: float | None = None
+        self.last_acceleration: float | None = None
 
     def move(self, x: float, y: float, at: float) -> None:
         point = (x, y, at)
@@ -255,9 +316,12 @@ class MouseWindow:
                 )
                 self.burst_start = point
                 self.previous_direction = None
+                self.last_speed = None
+                self.last_acceleration = None
             elif distance > 0 and elapsed > 0:
                 self.path += distance
                 self.active_ms += elapsed
+                self._kinematics(distance, elapsed)
                 direction = math.atan2(dy, dx)
                 if self.previous_direction is not None:
                     change = abs(direction - self.previous_direction)
@@ -268,6 +332,22 @@ class MouseWindow:
                 self.previous_direction = direction
         self.burst_end = point
         self.previous = point
+
+    def _kinematics(self, distance: float, elapsed: float) -> None:
+        """Speed, then |change| of speed and of acceleration, per second."""
+        seconds = elapsed / 1000
+        speed = distance / seconds
+        self.speeds.append(speed)
+        if self.last_speed is not None:
+            acceleration = abs(speed - self.last_speed) / seconds
+            self.accelerations.append(acceleration)
+            if self.last_acceleration is not None:
+                self.jerks.append(abs(acceleration - self.last_acceleration) / seconds)
+            self.last_acceleration = acceleration
+        self.last_speed = speed
+
+    def right_click(self) -> None:
+        self.right_clicks += 1
 
     def click(self, at: float) -> None:
         self.clicks += 1
@@ -292,6 +372,16 @@ class MouseWindow:
             ),
             "straightness_ratio": min(1.0, displacement / self.path) if self.path > 0 else None,
             "click_interval_ms_mean": _mean(self.click_intervals),
+            "speed_px_per_second_std": _std(self.speeds),
+            "speed_px_per_second_median": _median(self.speeds),
+            "speed_px_per_second_p90": _p90(self.speeds),
+            "acceleration_px_per_second2_mean": _mean(self.accelerations),
+            "acceleration_px_per_second2_std": _std(self.accelerations),
+            "acceleration_px_per_second2_p90": _p90(self.accelerations),
+            "jerk_px_per_second3_mean": _mean(self.jerks),
+            "jerk_px_per_second3_median": _median(self.jerks),
+            "jerk_px_per_second3_p90": _p90(self.jerks),
+            "right_click_count": self.right_clicks,
         }
 
 
@@ -302,7 +392,27 @@ def _finite(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
 
-def clean_keyboard(features: dict[str, Any]) -> tuple[dict[str, Any] | None, str]:
+def attach_v2(row: dict[str, Any], features: dict[str, Any], names: list[str],
+              report: Counter | None, modality: str) -> None:
+    """Add feature set v2 to a kept row, without ever dropping the row.
+
+    Older live rows have no v2 values at all; they keep the v1 schema. A value
+    that cannot be computed in one window (for example jerk needs three
+    movement samples) is set to 0.0 and counted in the report.
+    """
+    if not all(name in features for name in names):
+        return
+    for name in names:
+        value = features[name]
+        if not _finite(value) or value < 0:
+            value = 0.0
+            if report is not None:
+                report[f"{modality}_v2_filled_zero_{name}"] += 1
+        row[name] = float(value)
+
+
+def clean_keyboard(features: dict[str, Any],
+                   report: Counter | None = None) -> tuple[dict[str, Any] | None, str]:
     row = {name: features.get(name) for name in KEYBOARD_FEATURES}
     if row["pause_count"] == 0 and row["pause_duration_ms_mean"] is None:
         row["pause_duration_ms_mean"] = 0.0
@@ -314,6 +424,7 @@ def clean_keyboard(features: dict[str, Any]) -> tuple[dict[str, Any] | None, str
         return None, "out_of_range"
     row["pause_count"] = int(row["pause_count"])
     row.update(relative_keyboard_features(row))
+    attach_v2(row, features, V2_KEYBOARD_FEATURES, report, "keyboard")
     return row, "kept"
 
 
@@ -332,7 +443,8 @@ def relative_keyboard_features(row: dict[str, Any]) -> dict[str, float]:
     }
 
 
-def clean_mouse(features: dict[str, Any]) -> tuple[dict[str, Any] | None, str]:
+def clean_mouse(features: dict[str, Any],
+                report: Counter | None = None) -> tuple[dict[str, Any] | None, str]:
     row = {name: features.get(name) for name in MOUSE_FEATURES}
     if not _finite(row["path_length_px"]) or row["path_length_px"] < MIN_MOUSE_PATH_PX:
         return None, "no_movement"
@@ -340,6 +452,7 @@ def clean_mouse(features: dict[str, Any]) -> tuple[dict[str, Any] | None, str]:
         return None, "null_or_invalid_feature"
     if any(value < 0 for value in row.values()) or row["straightness_ratio"] > 1:
         return None, "out_of_range"
+    attach_v2(row, features, V2_MOUSE_FEATURES, report, "mouse")
     return row, "kept"
 
 
@@ -403,7 +516,7 @@ def ub_keyboard_rows(report: Counter) -> Iterator[dict[str, Any]]:
             if collector.key_downs < MIN_KEYDOWNS:
                 report["ub_keyboard_dropped_too_few_keys"] += 1
             else:
-                row, reason = clean_keyboard(collector.features())
+                row, reason = clean_keyboard(collector.features(), report)
                 report[f"ub_keyboard_{reason}"] += 1
                 if row:
                     yield window_record(
@@ -444,6 +557,8 @@ def ub_mouse_rows(report: Counter, conditions: dict[str, str]) -> Iterator[dict[
                 events.append((at, "move", x, y))
             elif parts[2] == "Left" and parts[3] == "Click":
                 events.append((at, "click", 0.0, 0.0))
+            elif parts[2] == "Right" and parts[3] == "Click":
+                events.append((at, "right_click", 0.0, 0.0))
         if not events:
             report["ub_mouse_files_empty"] += 1
             continue
@@ -454,7 +569,7 @@ def ub_mouse_rows(report: Counter, conditions: dict[str, str]) -> Iterator[dict[
 
         def flush(index: int) -> Iterator[dict[str, Any]]:
             report["ub_mouse_windows_total"] += 1
-            row, reason = clean_mouse(collector.features())
+            row, reason = clean_mouse(collector.features(), report)
             report[f"ub_mouse_{reason}"] += 1
             if row:
                 yield window_record(
@@ -471,6 +586,8 @@ def ub_mouse_rows(report: Counter, conditions: dict[str, str]) -> Iterator[dict[
                 current = index
             if kind == "move":
                 collector.move(x, y, at)
+            elif kind == "right_click":
+                collector.right_click()
             else:
                 collector.click(at)
         yield from flush(current)
@@ -498,17 +615,21 @@ def read_live(path: Path) -> list[dict[str, Any]]:
     records = []
     if path.suffix.lower() == ".csv":
         with path.open(encoding="utf-8-sig", newline="") as source:
-            for row in csv.DictReader(source):
+            reader = csv.DictReader(source)
+            columns = set(reader.fieldnames or [])
+            keyboard_names = KEYBOARD_FEATURES + [n for n in V2_KEYBOARD_FEATURES if n in columns]
+            mouse_names = (
+                MOUSE_FEATURES + ["click_interval_ms_mean"] + DEVICE_SIGNAL_FEATURES
+                + [n for n in V2_MOUSE_FEATURES if n in columns]
+            )
+            for row in reader:
                 records.append({
                     "user_id": row.get("user_id"),
                     "device_id": row.get("device_id"),
                     "session_id": row.get("session_id"),
                     "timestamp": row.get("timestamp"),
-                    "keyboard_features": {k: _number(row.get(k)) for k in KEYBOARD_FEATURES},
-                    "mouse_features": {
-                        k: _number(row.get(k))
-                        for k in MOUSE_FEATURES + ["click_interval_ms_mean"] + DEVICE_SIGNAL_FEATURES
-                    },
+                    "keyboard_features": {k: _number(row.get(k)) for k in keyboard_names},
+                    "mouse_features": {k: _number(row.get(k)) for k in mouse_names},
                 })
     else:
         with path.open(encoding="utf-8") as source:
@@ -536,7 +657,7 @@ def _ub_order(row: dict[str, Any]) -> tuple:
 
 
 def live_rows(records: list[dict[str, Any]], report: Counter,
-              test_from: datetime | None = None):
+              test_from: datetime | None = None, live_from: datetime | None = None):
     usable = []
     seen = set()
     for record in records:
@@ -551,6 +672,9 @@ def live_rows(records: list[dict[str, Any]], report: Counter,
             continue
         if not user or user == "None" or not session_id:
             report["live_records_bad_metadata"] += 1
+            continue
+        if live_from is not None and when < live_from:
+            report["live_records_before_live_from"] += 1
             continue
         key = (user, session_id, when.isoformat(),
                json.dumps(record.get("keyboard_features"), sort_keys=True),
@@ -586,14 +710,14 @@ def live_rows(records: list[dict[str, Any]], report: Counter,
             window_offset_ms=(when - session_start[session_key]).total_seconds() * 1000,
         )
         kb_row, kb_reason = clean_keyboard(
-            {k: _number(v) for k, v in (record.get("keyboard_features") or {}).items()}
+            {k: _number(v) for k, v in (record.get("keyboard_features") or {}).items()}, report
         )
         report[f"live_keyboard_{kb_reason}"] += 1
         if kb_row:
             keyboard.append(window_record(modality="keyboard", features=kb_row, **common)
                             | {"split": split})
         mouse_values = {k: _number(v) for k, v in (record.get("mouse_features") or {}).items()}
-        ms_row, ms_reason = clean_mouse(mouse_values)
+        ms_row, ms_reason = clean_mouse(mouse_values, report)
         report[f"live_mouse_{ms_reason}"] += 1
         if ms_row:
             mouse.append(window_record(modality="mouse", features=ms_row, **common)
@@ -608,6 +732,8 @@ def live_rows(records: list[dict[str, Any]], report: Counter,
                 } | {"split": split, "device_signals": signal_row})
     keyboard.sort(key=_live_order)
     mouse.sort(key=_live_order)
+    harmonize_v2(keyboard, "keyboard", V2_KEYBOARD_FEATURES, report)
+    harmonize_v2(mouse, "mouse", V2_MOUSE_FEATURES, report)
     assign_live_splits(keyboard, has_round2=test_from is not None)
     assign_live_splits(mouse, has_round2=test_from is not None)
     mouse_split = {(r["subject_id"], r["session_id"], r["window_index"]): r["split"] for r in mouse}
@@ -615,6 +741,24 @@ def live_rows(records: list[dict[str, Any]], report: Counter,
         row["split"] = mouse_split[(row["subject_id"], row["session_id"], row["window_index"])]
     signals.sort(key=_live_order)
     return keyboard, mouse, signals, subject_of
+
+
+def harmonize_v2(rows: list[dict[str, Any]], modality: str, names: list[str],
+                 report: Counter) -> None:
+    """Keep one schema per file: v2 only if every window has it.
+
+    Live rows sent before the v2 extension have no v2 values. If old and new
+    rows are mixed, v2 is removed from all of them (use --live-from to keep
+    only the new rows instead).
+    """
+    key = f"{modality}_features"
+    with_v2 = sum(1 for row in rows if names[0] in row[key])
+    report[f"live_{modality}_windows_with_v2"] += with_v2
+    if 0 < with_v2 < len(rows):
+        report[f"live_{modality}_v2_dropped_mixed_versions"] += with_v2
+        for row in rows:
+            for name in names:
+                row[key].pop(name, None)
 
 
 def assign_live_splits(rows: list[dict[str, Any]], has_round2: bool = False) -> list[dict[str, Any]]:
@@ -724,17 +868,22 @@ def _read(path: Path) -> list[dict[str, Any]]:
         return [json.loads(line) for line in source if line.strip()]
 
 
-def _feature_names(modality: str) -> list[str]:
+def _feature_names(modality: str, rows: list[dict[str, Any]] | None = None) -> list[str]:
+    """Features to scale; v2 is included when the rows carry it."""
     if modality == "keyboard":
-        return KEYBOARD_FEATURES + RELATIVE_KEYBOARD_FEATURES
-    return MOUSE_FEATURES
+        names, v2 = KEYBOARD_FEATURES + RELATIVE_KEYBOARD_FEATURES, V2_KEYBOARD_FEATURES
+    else:
+        names, v2 = list(MOUSE_FEATURES), V2_MOUSE_FEATURES
+    if rows and all(v2[0] in row[f"{modality}_features"] for row in rows):
+        names = names + v2
+    return names
 
 
 def fit_normalization(rows: list[dict[str, Any]], modality: str) -> dict[str, Any]:
     """Robust (median / IQR) scaler fitted on the given (train) rows."""
     key = f"{modality}_features"
     params: dict[str, Any] = {"rows_fitted": len(rows), "fitted_on": "train", "features": {}}
-    for name in _feature_names(modality):
+    for name in _feature_names(modality, rows):
         values = sorted(float(row[key][name]) for row in rows)
         median = _quantile(values, 0.5)
         iqr = _quantile(values, 0.75) - _quantile(values, 0.25)
@@ -755,7 +904,7 @@ def apply_normalization(
         row[key] = {
             name: (float(row[key][name]) - params["features"][name]["median"])
             / params["features"][name]["iqr"]
-            for name in _feature_names(modality)
+            for name in params["features"]
         }
         row["dataset"] = f"{modality}_feature_window_normalized"
         scaled.append(row)
@@ -796,7 +945,17 @@ def main(argv: list[str] | None = None) -> int:
         help="Date (YYYY-MM-DD, Pakistan time) when a later live collection "
              "round started; all live windows from then on go to the test split.",
     )
+    parser.add_argument(
+        "--live-from",
+        help="Date (YYYY-MM-DD, Pakistan time): ignore live windows before it, for "
+             "example to use only data from a newer extension version.",
+    )
     args = parser.parse_args(argv)
+    live_from = None
+    if args.live_from:
+        live_from = datetime.fromisoformat(args.live_from)
+        if live_from.tzinfo is None:
+            live_from = live_from.replace(tzinfo=PAKISTAN_TIME)
     test_from = None
     if args.live_test_from:
         test_from = datetime.fromisoformat(args.live_test_from)
@@ -809,6 +968,8 @@ def main(argv: list[str] | None = None) -> int:
         "window_ms": WINDOW_MS,
         "keyboard_features": KEYBOARD_FEATURES,
         "keyboard_relative_features": RELATIVE_KEYBOARD_FEATURES,
+        "keyboard_v2_features": V2_KEYBOARD_FEATURES,
+        "mouse_v2_features": V2_MOUSE_FEATURES,
         "mouse_features": MOUSE_FEATURES,
         "min_keydowns_per_ub_window": MIN_KEYDOWNS,
         "min_ub_mouse_windows_per_subject": MIN_UB_MOUSE_WINDOWS_PER_SUBJECT,
@@ -818,6 +979,7 @@ def main(argv: list[str] | None = None) -> int:
             "live": "inside every session, time order: with --live-test-from 75% train "
                     "/ 25% calibration and the later round = test; without it 60/20/20",
             "live_test_from": test_from.isoformat() if test_from else None,
+            "live_from": live_from.isoformat() if live_from else None,
         },
     }
 
@@ -836,7 +998,7 @@ def main(argv: list[str] | None = None) -> int:
 
     live_path = args.live_file or _latest_live_file()
     if live_path is not None:
-        keyboard, mouse, signals, subjects = live_rows(read_live(live_path), report, test_from)
+        keyboard, mouse, signals, subjects = live_rows(read_live(live_path), report, test_from, live_from)
         summary["live_source_file"] = str(live_path)
         summary["live_subjects"] = subjects
         summary["live_keyboard_rows"] = _write_splits(out, "live_keyboard", keyboard)
