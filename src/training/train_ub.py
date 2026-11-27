@@ -160,7 +160,8 @@ def parse_args(argv=None, modality=None):
     parser.add_argument("--models", nargs="+", choices=MODEL_NAMES, default=list(MODEL_NAMES))
     parser.add_argument(
         "--feature-sets", nargs="+", default=None,
-        help="default: every set of the modality (keyboard: abs10 all15; mouse: mouse5)",
+        help="default: every set of the modality (keyboard: abs10 all15 abs10_v2 all21; "
+             "mouse: mouse5 mouse15)",
     )
     parser.add_argument("--users", type=int, default=None, help="only the first N users")
     parser.add_argument("--seed", type=int, default=42)

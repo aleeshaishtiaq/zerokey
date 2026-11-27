@@ -19,6 +19,9 @@ Newest entry first. Every chat adds an entry here at the end of its task
   same features to the API and the extension and collect a new live round 1
   (one day, 2-3 sessions; only the modality that improved), then rebuild
   with `--live-from <first day of the new round>`.
+  **Azka compared v1 vs v2 on 27 Nov (see Log): keyboard v2 helps clearly,
+  mouse v2 helps a little.** Team decides which modality goes into the
+  extension.
   Keep every current feature, so old and new results can be compared.
   - Mouse: speed std / median / p90, acceleration (mean, std, p90), jerk
     (mean, median, p90), right-click count. In the 27 Nov test these were the
@@ -54,6 +57,34 @@ rows on Aleesha's device ID) was saved under Areeba's account, so it is valid
 training data.
 
 ## Log
+
+### 2026-11-27 (late night) — Azka
+- Zip v5 unpacked (checksums OK; live files unchanged). Feature set v2 added
+  to `src/training/data.py`: keyboard `abs10_v2` (10 absolute + 6 v2) and
+  `all21` (all), mouse `mouse15` (5 + 10 v2). `train_ub` now runs every set by
+  default. v1 results are identical to before, so v1 vs v2 is a fair test.
+- UB, test split, one 15 s window per decision, mean over users:
+
+  | Modality | Model | v1 EER / AUC | v2 EER / AUC |
+  |---|---|---|---|
+  | Keyboard (abs10 -> abs10_v2) | One-Class SVM | 0.288 / 0.755 | 0.269 / 0.774 |
+  | Keyboard (abs10 -> abs10_v2) | Isolation Forest | 0.296 / 0.749 | **0.268 / 0.780** |
+  | Keyboard (abs10 -> abs10_v2) | Autoencoder | 0.294 / 0.753 | 0.293 / 0.752 |
+  | Mouse (mouse5 -> mouse15) | One-Class SVM | 0.474 / 0.539 | 0.458 / 0.563 |
+  | Mouse (mouse5 -> mouse15) | Isolation Forest | 0.471 / 0.541 | 0.461 / 0.560 |
+  | Mouse (mouse5 -> mouse15) | Autoencoder | 0.472 / 0.540 | 0.455 / 0.561 |
+
+  `all21` (with the 5 relative features) is slightly worse than `abs10_v2`
+  (best 0.271), so the relative features still do not help.
+- Per user (EER v1 vs v2): keyboard Isolation Forest better for 124 users,
+  worse for 23; One-Class SVM 107 / 39 (both clearly beyond chance, sign test
+  p < 1e-7); autoencoder 85 / 61 (no clear change). Mouse: 84-93 users better,
+  47-55 worse (small but consistent gain; mouse still close to chance).
+- Conclusion: keyboard v2 is worth adding to the extension and API; mouse v2
+  gives only a small gain (team decision). New best keyboard model: Isolation
+  Forest with `abs10_v2`.
+- Still open: combining consecutive windows, live models and fusion, saving
+  the fitted models, model tuning on calibration.
 
 ### 2026-11-27 (night) — Areeba
 - Feature set v2 in `prepare_training_windows.py` (UB), added next to every

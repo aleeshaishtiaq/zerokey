@@ -123,7 +123,19 @@ def test_mouse_run_only_models_users_with_train_windows(tmp_path):
 
 
 def test_feature_sets_default_to_the_modality():
-    assert parse_args(["--modality", "mouse"]).feature_sets == ["mouse5"]
-    assert parse_args(["--modality", "keyboard"]).feature_sets == ["abs10", "all15"]
+    assert parse_args(["--modality", "mouse"]).feature_sets == ["mouse5", "mouse15"]
+    assert parse_args(["--modality", "keyboard"]).feature_sets == [
+        "abs10", "all15", "abs10_v2", "all21",
+    ]
     with pytest.raises(SystemExit):
         parse_args(["--modality", "mouse", "--feature-sets", "abs10"])
+
+
+def test_feature_set_v2_keeps_every_v1_feature():
+    from src.training.data import KEYBOARD_V2_FEATURES, MOUSE_FEATURE_SETS, MOUSE_V2_FEATURES
+
+    assert KEYBOARD_FEATURE_SETS["abs10_v2"][:10] == KEYBOARD_FEATURE_SETS["abs10"]
+    assert KEYBOARD_FEATURE_SETS["all21"][:15] == KEYBOARD_FEATURE_SETS["all15"]
+    assert KEYBOARD_FEATURE_SETS["all21"][15:] == KEYBOARD_V2_FEATURES
+    assert MOUSE_FEATURE_SETS["mouse15"] == MOUSE_FEATURES + MOUSE_V2_FEATURES
+    assert len(set(KEYBOARD_FEATURE_SETS["all21"])) == 21
