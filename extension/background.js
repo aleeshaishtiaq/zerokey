@@ -20,6 +20,12 @@ const PUBLIC_IP_LOOKUP_PROVIDERS = [
     readAddress: async (response) => response.text(),
   },
 ];
+// Windows that could not be sent (sign-in expired, network or API down) are
+// kept here and sent later, but only for the same signed-in user.
+const PENDING_WINDOWS_KEY = 'pending_windows';
+const LAST_SUBJECT_KEY = 'last_subject';
+const MAX_PENDING_WINDOWS = 960; // about 4 hours of 15-second windows
+const MAX_PENDING_AGE_MS = 24 * 60 * 60 * 1000;
 const TELEMETRY_API_URL = `${CONFIG.apiOrigin.replace(/\/+$/, '')}/api/telemetry`;
 const ALLOWED_PORTAL_ORIGINS = new Set([
   'http://localhost:5500',
@@ -175,12 +181,21 @@ async function registerHostedPortalScript() {
     {
       id: 'zerokey-hosted-portal',
       matches: [originPattern],
-      js: ['config.js', 'content.js'],
+      // Same files and order as content_scripts in manifest.json.
+      js: ['config.js', 'features.js', 'content.js'],
       runAt: 'document_start',
       persistAcrossSessions: true,
     },
   ]);
 }
+
+// A registration from an older extension version keeps its old file list, so
+// it is renewed whenever the extension is installed, updated or reloaded.
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.scripting.getRegisteredContentScripts({ ids: ['zerokey-hosted-portal'] }).then(
+    (registered) => (registered.length ? registerHostedPortalScript() : undefined),
+  ).catch((error) => console.error('Unable to renew the hosted portal script.', error));
+});
 
 async function unregisterHostedPortalScript() {
   const registered = await chrome.scripting.getRegisteredContentScripts({
@@ -273,12 +288,118 @@ async function getPublicIpAddress() {
   return { address: null, status: 'lookup_failed' };
 }
 
+function tokenSubject(token) {
+  try {
+    const part = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const claims = JSON.parse(atob(part + '='.repeat((4 - (part.length % 4)) % 4)));
+    return typeof claims.sub === 'string' ? claims.sub : null;
+  } catch {
+    return null;
+  }
+}
+
+async function setWarningBadge(show) {
+  try {
+    await chrome.action.setBadgeBackgroundColor({ color: '#d93025' });
+    await chrome.action.setBadgeText({ text: show ? '!' : '' });
+  } catch (error) {
+    console.warn('Unable to update the extension badge.', error);
+  }
+}
+
+function isRetryable(error) {
+  // No status: no sign-in or no network. 401/403: sign-in expired. 408/429/5xx: try later.
+  const status = error?.status;
+  return status === undefined || [401, 403, 408, 429].includes(status) || status >= 500;
+}
+
+async function rememberSubject(token) {
+  const subject = tokenSubject(token);
+  if (subject) {
+    await chrome.storage.local.set({ [LAST_SUBJECT_KEY]: subject });
+  }
+  return subject;
+}
+
+async function queueWindow(payload) {
+  const saved = await chrome.storage.local.get([
+    PENDING_WINDOWS_KEY,
+    LAST_SUBJECT_KEY,
+    TELEMETRY_CONSENT_KEY,
+  ]);
+  if (saved[TELEMETRY_CONSENT_KEY] !== true || typeof saved[LAST_SUBJECT_KEY] !== 'string') {
+    return false;
+  }
+  const now = Date.now();
+  const pending = (saved[PENDING_WINDOWS_KEY] ?? []).filter(
+    (item) => now - item.queued_at < MAX_PENDING_AGE_MS,
+  );
+  pending.push({ subject: saved[LAST_SUBJECT_KEY], queued_at: now, payload });
+  await chrome.storage.local.set({ [PENDING_WINDOWS_KEY]: pending.slice(-MAX_PENDING_WINDOWS) });
+  return true;
+}
+
+async function clearPendingWindows() {
+  await chrome.storage.local.remove([PENDING_WINDOWS_KEY, LAST_SUBJECT_KEY]);
+}
+
+let flushInProgress = null;
+
+function flushPendingWindows() {
+  flushInProgress ??= (async () => {
+    try {
+      const subject = await rememberSubject(await getAccessToken());
+      const saved = await chrome.storage.local.get(PENDING_WINDOWS_KEY);
+      const now = Date.now();
+      // Windows of another user are never sent under this sign-in.
+      let pending = (saved[PENDING_WINDOWS_KEY] ?? []).filter(
+        (item) => subject && item.subject === subject && now - item.queued_at < MAX_PENDING_AGE_MS,
+      );
+      let sent = 0;
+      while (pending.length) {
+        try {
+          await sendTelemetry(pending[0].payload);
+          sent += 1;
+        } catch (error) {
+          if (isRetryable(error)) {
+            break;
+          }
+          console.error('Dropping a saved window the API rejected.', error);
+        }
+        pending = pending.slice(1);
+        await chrome.storage.local.set({ [PENDING_WINDOWS_KEY]: pending });
+      }
+      await chrome.storage.local.set({ [PENDING_WINDOWS_KEY]: pending });
+      return sent;
+    } finally {
+      flushInProgress = null;
+    }
+  })();
+  return flushInProgress;
+}
+
 async function forwardTelemetry(payload) {
+  try {
+    const result = await sendTelemetry(payload);
+    await setWarningBadge(false);
+    flushPendingWindows().catch((error) => console.warn('Unable to send saved windows yet.', error));
+    return result;
+  } catch (error) {
+    await setWarningBadge(true);
+    if (isRetryable(error) && (await queueWindow(payload).catch(() => false))) {
+      error.message += ' This window was saved and will be sent after you sign in again (refresh the portal).';
+    }
+    throw error;
+  }
+}
+
+async function sendTelemetry(payload) {
   const consent = await chrome.storage.local.get(TELEMETRY_CONSENT_KEY);
   if (consent[TELEMETRY_CONSENT_KEY] !== true) {
     throw new Error('Telemetry consent is required before sending behavior features.');
   }
   const accessToken = await getAccessToken();
+  await rememberSubject(accessToken);
   const deviceId = await getDeviceId();
   const publicIp = await getPublicIpAddress();
   const response = await fetch(TELEMETRY_API_URL, {
@@ -312,7 +433,9 @@ async function forwardTelemetry(payload) {
     } catch {
       // Preserve non-JSON error responses for troubleshooting.
     }
-    throw new Error(`Telemetry API returned HTTP ${response.status}: ${detail}`);
+    const error = new Error(`Telemetry API returned HTTP ${response.status}: ${detail}`);
+    error.status = response.status;
+    throw error;
   }
   return { public_ip_status: publicIp.status };
 }
@@ -359,6 +482,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       await chrome.storage.local.set({ [TELEMETRY_CONSENT_KEY]: true });
       await getDeviceId();
       await registerHostedPortalScript();
+      await setWarningBadge(false);
+      flushPendingWindows().catch((error) => console.warn('Unable to send saved windows yet.', error));
       sendResponse({ ok: true });
     })().catch((error) => {
       console.error('Unable to validate portal authentication for telemetry.', error);
@@ -375,7 +500,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ ok: false, error: 'Invalid telemetry consent message.' });
       return false;
     }
-    chrome.storage.local.set({ [TELEMETRY_CONSENT_KEY]: false }).then(
+    chrome.storage.local.set({ [TELEMETRY_CONSENT_KEY]: false }).then(clearPendingWindows).then(
       () => chrome.storage.session.remove([ACCESS_TOKEN_KEY, ACCESS_TOKEN_EXPIRY_KEY]).then(
         () => sendResponse({ ok: true }),
         (error) => {
@@ -414,7 +539,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ ok: false, error: 'Sign-out must be started from the extension popup.' });
       return false;
     }
-    chrome.storage.session.remove([ACCESS_TOKEN_KEY, ACCESS_TOKEN_EXPIRY_KEY]).then(
+    chrome.storage.session.remove([ACCESS_TOKEN_KEY, ACCESS_TOKEN_EXPIRY_KEY]).then(clearPendingWindows).then(
       () => unregisterHostedPortalScript().then(
         () => sendResponse({ ok: true }),
         (error) => {
@@ -441,8 +566,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
       return getAccessToken();
     }).then(
-      () => sendResponse({ ok: true }),
+      () => {
+        setWarningBadge(false);
+        flushPendingWindows().catch((error) => console.warn('Unable to send saved windows yet.', error));
+        sendResponse({ ok: true });
+      },
       (error) => {
+        setWarningBadge(true);
         sendResponse({
           ok: false,
           error: error instanceof Error ? error.message : 'Extension sign-in is required.',
