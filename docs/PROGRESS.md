@@ -70,6 +70,23 @@ training data.
 
 ## Log
 
+### 2026-11-28 (morning) — Areeba
+- Bug in 1.6.0: on the hosted portal the extension also injects the content
+  script through a dynamic registration (`registerHostedPortalScript`), whose
+  file list was still `config.js, content.js`. Without `features.js`,
+  `content.js` stopped at start-up, so nothing was collected (status stayed
+  "Waiting for the ZeroKey extension to load."). About an hour of data on
+  28 Nov morning was lost.
+- Extension **1.6.1**: the registration now loads `config.js, features.js,
+  content.js` and is renewed on every install/update/reload;
+  `tests/test_extension_files.py` checks it matches the manifest.
+- Windows that cannot be sent (sign-in expired, network or API down) are now
+  saved in `chrome.storage.local` (max ~4 hours, 24 h) and sent in order
+  after the same user signs in again; windows are never sent under another
+  user's sign-in, and sign-out or consent withdrawal clears them. A red "!"
+  badge and a "NOT COLLECTING" / "NOT SENT" status show problems.
+  `tests/test_extension_queue.py` runs the real `background.js` in node.
+
 ### 2026-11-28 (night) — Areeba
 - Decision (team): option (a), extension and API get keyboard v2, mouse v2 and
   mouse v3 together, so the extension and the live round change only once.

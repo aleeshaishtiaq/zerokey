@@ -468,7 +468,7 @@ function sendWindowFeatures() {
         }
       } else {
         const error = response?.error ?? 'The extension rejected the telemetry message.';
-        setCollectorStatus(`Could not send telemetry: ${error}`);
+        setCollectorStatus(`NOT SENT: ${error}`);
         console.error('Behavioral telemetry was not accepted by the extension service worker.', error);
       }
     },
@@ -572,12 +572,14 @@ if (ALLOWED_PORTAL_ORIGINS.has(window.location.origin)) {
       if (response?.ok) {
         startCollector();
       } else {
-        setCollectorStatus(response?.error ?? 'Sign in from the extension popup to enable collection.');
+        setCollectorStatus(
+          `NOT COLLECTING: ${response?.error ?? 'Sign in from the extension popup to enable collection.'}`,
+        );
       }
     },
     (error) => {
       console.error('Unable to check extension sign-in status.', error);
-      setCollectorStatus('Could not verify extension sign-in. Reload the portal after signing in.');
+      setCollectorStatus('NOT COLLECTING: could not verify extension sign-in. Reload the portal after signing in.');
     },
   );
 }
